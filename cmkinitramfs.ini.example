@@ -1,0 +1,77 @@
+# cmkinitramfs.ini
+#
+# Example configuration file for cmkinitramfs and cmkinit
+#
+# This configuration uses a separate / and /usr partitions, respectively on
+# system/root and system/usr LVM logical volumes. The LVM is on a LUKS
+# encrypted partition. The key to unlock the LUKS partition is encrypted
+# in the /root/key file, the header for the key file is /root/key.luks.
+# 
+# The resulting /init script will:
+#   - Unlock the key /root/key with the header /root/key.luks
+#   - Unlock the main luks partition with the unlocked key
+#   - Lock the key since we don't need it anymore
+#   - Enable the system/root LV
+#   - Mount /
+#   - Enable the system/usr LV
+#   - Mount /usr
+#
+
+[DEFAULT]
+#build-dir = /tmp/initramfs
+root = mnt-root
+mountpoints = mnt-usr
+keymap = /usr/share/keymaps/i386/azerty/fr.map.gz
+#keymap-init = /root/keymap.bmap
+init = /sbin/openrc-init
+files = /root/key:/root/key.luks
+
+
+[luks-key]
+type = luks
+need =
+load-need =
+source = PATH=/root/key
+name = key
+header = PATH=/root/key.luks
+
+[luks-main]
+type = luks
+need =
+load-need = luks-key
+source = UUID=xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
+name = luks
+key = luks-key
+
+[lvm-root]
+type = lvm
+need = luks-main
+load-need =
+vg-name = system
+lv-name = root
+
+[mnt-root]
+type = mount
+need = lvm-root
+load-need =
+source = UUID=xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
+mountpoint = /mnt/root
+filesystem = ext4
+options = ro
+
+[lvm-usr]
+type = lvm
+need = luks-main
+load-need =
+vg-name = system
+lv-name = usr
+
+[mnt-usr]
+type = mount
+need = lvm-usr
+load-need =
+source = lvm-usr
+mountpoint = /mnt/root/usr
+filesystem = ext4
+options = ro
+

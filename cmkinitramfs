@@ -1,0 +1,142 @@
+#!/usr/bin/env python
+#
+# Script building an initramfs
+# Reads configuration file from :
+#   - CMKINITCFG file if environment variable set
+#   - ./cmkinitramfs.ini if exists
+#   - /etc/cmkinitramfs.ini by default
+#
+
+import cmkinitramfs
+import configparser
+import os
+import argparse
+import sys
+import subprocess
+import shutil
+import glob
+
+# Load configuration
+config = configparser.ConfigParser()
+if os.environ.get("CMKINITCFG"):
+    config.read(os.environ["CMKINITCFG"])
+elif os.path.isfile("./cmkinitramfs.ini"):
+    config.read("./cmkinitramfs.ini")
+else:
+    config.read("/etc/cmkinitramfs.ini")
+
+# Configure initramfs module
+if config["DEFAULT"].get("build-dir"):
+    initramfs.DESTDIR = config["DEFAULT"]["build-dir"].strip()
+
+# types: Set of data types used to boot
+types = set()
+for data in [k for k in config if k != "DEFAULT"]:
+    types.add(config[data]["type"])
+
+# filesystems: Set of filesystems used to boot
+filesystems = set()
+for mount in [k for k in config if k != "DEFAULT" \
+              and config[k]["type"] == "mount"]:
+    filesystems.add(config[mount]["filesystem"])
+
+# Parse command line
+parser = argparse.ArgumentParser(description="Build an initramfs.")
+parser.add_argument(
+    "--debug", "-d", dest="debug", action="store_true",
+    help="Enable debugging mode: non root and does not create final archive"
+)
+parser.add_argument(
+    "--dry-run", "-D", dest="dryrun", action="store_true",
+    help="Enable dry-run: does not creates final initramfs"
+)
+parser.add_argument(
+    "--output", "-o", dest="output", type=str,
+    help="Set output cpio file and disable writing to /boot"
+)
+parser.add_argument(
+    "kernel", type=str, nargs='?',
+    help="Select kernel version to cleanup rather than /usr/src/linux"
+)
+args = parser.parse_args()
+
+
+# Build initramfs
+
+cmkinitramfs.mklayout(debug=args.debug)
+
+# Copy user files
+if config["DEFAULT"].get("files"):
+    for filepath in config["DEFAULT"]["files"].strip().split(':'):
+        cmkinitramfs.copyfile(filepath)
+
+# Busybox
+cmkinitramfs.copyexec("busybox")
+cmkinitramfs.install_busybox()
+
+# Cryptsetup
+if "luks" in types:
+    cmkinitramfs.copyexec("cryptsetup")
+    cmkinitramfs.copylib("libgcc_s.so.1")
+
+# LVM
+if "lvm" in types:
+    cmkinitramfs.copyexec("lvm")
+
+# BTRFS
+if "btrfs" in filesystems:
+    cmkinitramfs.copyexec("btrfs")
+    cmkinitramfs.copyexec("fsck.btrfs")
+
+# Keyboard
+if config["DEFAULT"].get("keymap"):
+    gzip = subprocess.run(
+        ["gzip", "-cd", config["DEFAULT"]["keymap"].strip()],
+        stdout=subprocess.PIPE, check=True
+    )
+    loadkeys = subprocess.run(
+        ["loadkeys", "--bkeymap"],
+        input=gzip.stdout, stdout=subprocess.PIPE, check=True
+    )
+    cmkinitramfs.writefile(
+        loadkeys.stdout,
+        config["DEFAULT"].get("keymap-file", "/root/keymap.bmap")
+    )
+
+# Create /init
+init = subprocess.run(["./cmkinit"], stdout=subprocess.PIPE, check=True)
+cmkinitramfs.writefile(init.stdout, "/init", 0o755)
+
+# Create initramfs
+if not(args.debug) and not(args.dryrun):
+    # Build cpio
+    cpio = cmkinitramfs.mkcpio()
+    if args.output == "-":
+        sys.stdout.buffer.write(cpio)
+    else:
+        output = args.output if args.output else "/usr/src/initramfs.cpio"
+        with open(output, "wb") as filedest:
+            filedest.write(cpio)
+
+    # Cleanup temporary directory
+    cmkinitramfs.cleanup()
+
+    # Cleanup kernel's initramfs
+    if args.kernel != "none":
+        kver = args.kernel if args.kernel else "linux"
+        rm = glob.glob(f"/usr/src/{kver}/usr/initramfs_data.cpio*")
+        for fname in rm:
+            os.remove(fname)
+
+    if not args.output:
+        # Copy cpio to /boot
+        if os.path.isfile("/boot/initramfs.cpio.xz"):
+            shutil.copyfile("/boot/initramfs.cpio.xz",
+                            "/boot/initramfs.cpio.xz.old")
+        xz = subprocess.run(
+            ["xz", "-zkc", "--check=crc32", "/usr/src/initramfs.cpio"],
+            stdout=subprocess.PIPE, check=True
+        )
+        with open("/boot/initramfs.cpio.xz", "wb") as filedest:
+            filedest.write(xz.stdout)
+
