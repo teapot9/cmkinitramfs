@@ -104,7 +104,8 @@ if config["DEFAULT"].get("keymap"):
     )
 
 # Create /init
-init = subprocess.run(["./cmkinit"], stdout=subprocess.PIPE, check=True)
+cmkinit_exec = "./cmkinit" if os.path.isfile("./cmkinit") else "cmkinit"
+init = subprocess.run([cmkinit_exec], stdout=subprocess.PIPE, check=True)
 cmkinitramfs.writefile(init.stdout, "/init", 0o755)
 
 # Create initramfs
