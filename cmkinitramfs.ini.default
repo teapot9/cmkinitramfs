@@ -131,3 +131,31 @@ mountpoints =
 # Optional: Mount options to use, defaults to "ro"
 #options = "ro"
 
+# mdadm RAID data source definition
+# [mdadm-raid]
+
+# Set the type to mdadm
+#type = mdadm
+
+# Comma separated list of data sources needed to use mdadm-raid
+#need =
+
+# Comma separated list of data sources needed to load mdadm-raid, but not
+# required ot use it
+#load-need =
+
+# Name to use for the mdadm RAID, this will be passed to mdadm during
+# assembling
+#name =
+
+# Define the data sources to use to assemble the RAID
+# If there is only one data source, use *source* (e.g.
+# source = UUID=xxxx-yyyy)
+#source =
+# If there are multiple data sources, use *sourceN* with N the number of
+# the data source, starting at 0 (e.g. source0 = /dev/sda1 and source1 =
+# /dev/sdb1)
+#source0 =
+#source1 =
+#...
+

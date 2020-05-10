@@ -473,3 +473,51 @@ class MountData(Data):
     def path(self):
         return self.mountpoint
 
+
+class MdadmData(Data):
+    """Data class for mdadm RAID
+
+    Attributes:
+    sources -- List of Data objects to use as sources
+    name -- Name to use for the RAID
+    """
+
+    def __init__(self, sources, name):
+        super().__init__()
+        self.sources = sources
+        self.name = name
+        if len(self.sources) == 0:
+            raise DataError(f"{self.name} has no source defined")
+
+    def __str__(self):
+        return self.name
+
+    def load(self):
+        # Get the string containing all sources to use
+        sources_string = ""
+        for source in self.sources:
+            if isinstance(source, UuidData):
+                sources_string += f"--uuid \"{source.uuid}\" "
+            else:
+                sources_string += f"\"{source.path()}\" "
+        code = ""
+        code += self.pre_load()
+        code += f"echo 'Assembling {self.name} mdadm RAID'\n" \
+              + f"mdadm --assemble {sources_string}\"{self.name}\" || " \
+              + _die(f"Failed to assemble {self.name} mdadm RAID") + "\n" \
+              + "\n"
+        code += self.post_load()
+        return code
+
+    def unload(self):
+        code = ""
+        code += self.pre_unload()
+        code += f"echo 'Stopping {self.name} mdadm RAID'\n" \
+              + f"mdadm --stop \"{self.name}\"\n" \
+              + "\n"
+        code += self.post_unload()
+        return code
+
+    def path(self):
+        return "/dev/md/" + self.name
+

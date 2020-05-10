@@ -83,6 +83,10 @@ if "luks" in types:
 if "lvm" in types:
     cmkinitramfs.copyexec("lvm")
 
+# mdadm
+if "mdadm" in types:
+    cmkinitramfs.copyexec("mdadm")
+
 # BTRFS
 if "btrfs" in filesystems:
     cmkinitramfs.copyexec("btrfs")
