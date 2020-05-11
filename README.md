@@ -140,3 +140,17 @@ Configuration (**bold** = mandatory):
  * options: Mount options to use, defaults to "ro". If you want to use system
    defaults, put "defaults" here and not an empty string.
 
+### Section type md
+
+Defines a MD RAID device.
+
+Configuration (**bold** = mandatory):
+ * **type**
+ * **need**
+ * **load-need**
+ * **name**: Name to use for the md device.
+ * **source** or **sourceN**: Defines data sources to use for assembling the
+   raid device. Use *source* when only one source is needed. Use *source0*,
+   *source1*, ... when one or more sources are needed. The indexing must
+   start at 0.
+
