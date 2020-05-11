@@ -504,6 +504,7 @@ class MdData(Data):
         code = ""
         code += self.pre_load()
         code += f"echo 'Assembling {self.name} MD RAID'\n" \
+              + "MDADM_NO_UDEV=1 " \
               + f"mdadm --assemble {sources_string}\"{self.name}\" || " \
               + _die(f"Failed to assemble {self.name} MD RAID") + "\n" \
               + "\n"
@@ -514,6 +515,7 @@ class MdData(Data):
         code = ""
         code += self.pre_unload()
         code += f"echo 'Stopping {self.name} MD RAID'\n" \
+              + "MDADM_NO_UDEV=1 " \
               + f"mdadm --stop \"{self.name}\"\n" \
               + "\n"
         code += self.post_unload()
