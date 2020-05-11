@@ -75,8 +75,9 @@ def copyfile(src, dest=None):
         print(f"Stripping /usr/ from {dest}", file=sys.stderr)
         dest = dest.replace("/usr/", "/")
     # Check destination base directory exists (e.g. /bin)
-    if not os.path.isdir(f"{DESTDIR}/{dest.split('/')[1]}"):
-        raise FileNotFoundError(f"{DESTDIR}/" + dest.split('/')[1])
+    if len(dest.split('/')) > 2 \
+            and not os.path.isdir(f"{DESTDIR}/{dest.split('/')[1]}"):
+        raise FileNotFoundError(f"{DESTDIR}/{dest.split('/')[1]}")
     dest = DESTDIR + dest
 
     if os.path.exists(dest):
@@ -186,9 +187,9 @@ def install_busybox():
 
     cmd = subprocess.run(["busybox", "--list-full"],
                          stdout=subprocess.PIPE, check=True)
+    busybox = findexec("busybox")
     for applet in cmd.stdout.decode().strip().split('\n'):
-        if not os.path.exists(f"{DESTDIR}/{applet}"):
-            os.symlink("../bin/busybox", f"{DESTDIR}/{applet}")
+        copyfile(busybox, "/" + applet)
 
 def mkcpio():
     """Create CPIO archive from initramfs, returns bytes"""
