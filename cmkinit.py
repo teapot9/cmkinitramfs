@@ -89,7 +89,7 @@ def do_cmdline():
     return "for cmdline in $(cat /proc/cmdline); do\n" \
          + "\tcase \"${cmdline}\" in\n" \
          + "\t\trescue_shell) rescue_shell 'Manual rescue shell';;\n" \
-         + "\t\tmaintenance) MAINTENANDE=true;;\n" \
+         + "\t\tmaintenance) MAINTENANCE=true;;\n" \
          + "\tesac\n" \
          + "done\n" \
          + "\n"
