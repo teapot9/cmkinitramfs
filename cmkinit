@@ -3,7 +3,6 @@
 # Script building the /init script
 # Reads configuration file from :
 #   - CMKINITCFG file if environment variable set
-#   - ./cmkinitramfs.ini if exists
 #   - /etc/cmkinitramfs.ini by default
 #
 
@@ -35,8 +34,6 @@ def get_data(data_dic, data_str):
 config = configparser.ConfigParser()
 if os.environ.get("CMKINITCFG"):
     config.read(os.environ["CMKINITCFG"])
-elif os.path.isfile("./cmkinitramfs.ini"):
-    config.read("./cmkinitramfs.ini")
 else:
     config.read("/etc/cmkinitramfs.ini")
 
