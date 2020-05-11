@@ -26,7 +26,7 @@ def mklayout(debug=False):
     This function will fail if DESTDIR exists
     """
 
-    os.makedirs(DESTDIR, mode=0o700, exist_ok=False)
+    os.makedirs(DESTDIR, mode=0o755, exist_ok=False)
 
     os.mkdir(f"{DESTDIR}/bin", mode=0o755)
     os.mkdir(f"{DESTDIR}/dev", mode=0o755)
