@@ -47,11 +47,9 @@ def mklayout(debug=False):
 
     if debug:
         return
-    # TODO: Check if tty0 is necessary
     os.mknod(f"{DESTDIR}/dev/console", 0o600 | stat.S_IFCHR, os.makedev(5, 1))
     os.mknod(f"{DESTDIR}/dev/tty", 0o666 | stat.S_IFCHR, os.makedev(5, 0))
     os.mknod(f"{DESTDIR}/dev/null", 0o666 | stat.S_IFCHR, os.makedev(1, 3))
-    os.mknod(f"{DESTDIR}/dev/tty0", 0o620 | stat.S_IFCHR, os.makedev(4, 0))
 
 def copyfile(src, dest=None):
     """Copy a file to the initramfs
