@@ -474,8 +474,8 @@ class MountData(Data):
         return self.mountpoint
 
 
-class MdadmData(Data):
-    """Data class for mdadm RAID
+class MdData(Data):
+    """Data class for MD RAID
 
     Attributes:
     sources -- List of Data objects to use as sources
@@ -502,9 +502,9 @@ class MdadmData(Data):
                 sources_string += f"\"{source.path()}\" "
         code = ""
         code += self.pre_load()
-        code += f"echo 'Assembling {self.name} mdadm RAID'\n" \
+        code += f"echo 'Assembling {self.name} MD RAID'\n" \
               + f"mdadm --assemble {sources_string}\"{self.name}\" || " \
-              + _die(f"Failed to assemble {self.name} mdadm RAID") + "\n" \
+              + _die(f"Failed to assemble {self.name} MD RAID") + "\n" \
               + "\n"
         code += self.post_load()
         return code
@@ -512,7 +512,7 @@ class MdadmData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += f"echo 'Stopping {self.name} mdadm RAID'\n" \
+        code += f"echo 'Stopping {self.name} MD RAID'\n" \
               + f"mdadm --stop \"{self.name}\"\n" \
               + "\n"
         code += self.post_unload()

@@ -131,20 +131,20 @@ mountpoints =
 # Optional: Mount options to use, defaults to "ro"
 #options = "ro"
 
-# mdadm RAID data source definition
-# [mdadm-raid]
+# MD RAID data source definition
+# [md-raid]
 
-# Set the type to mdadm
-#type = mdadm
+# Set the type to md
+#type = md
 
-# Comma separated list of data sources needed to use mdadm-raid
+# Comma separated list of data sources needed to use md-raid
 #need =
 
-# Comma separated list of data sources needed to load mdadm-raid, but not
+# Comma separated list of data sources needed to load md-raid, but not
 # required ot use it
 #load-need =
 
-# Name to use for the mdadm RAID, this will be passed to mdadm during
+# Name to use for the MD RAID, this will be passed to mdadm during
 # assembling
 #name =
 

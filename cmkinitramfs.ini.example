@@ -6,7 +6,7 @@
 # system/root and system/usr LVM logical volumes. The LVM is on a LUKS
 # encrypted partition. The key to unlock the LUKS partition is encrypted
 # in the /root/key file, the header for the key file is /root/key.luks.
-# The luks encrypted partition is on a mdadm RAID.
+# The luks encrypted partition is on a MD RAID.
 # 
 # The resulting /init script will:
 #   - Assemble the RAID
@@ -28,11 +28,11 @@ keymap = /usr/share/keymaps/i386/azerty/fr.map.gz
 init = /sbin/openrc-init
 files = /root/key:/root/key.luks
 
-[mdadm-main]
-type = mdadm
+[md-main]
+type = md
 need =
 load-need =
-name = mdadm
+name = mdraid
 source = UUID=xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
 
 [luks-key]
@@ -45,7 +45,7 @@ header = PATH=/root/key.luks
 
 [luks-main]
 type = luks
-need = mdadm-main
+need = md-main
 load-need = luks-key
 source = UUID=xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
 name = luks

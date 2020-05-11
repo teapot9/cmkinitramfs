@@ -58,14 +58,14 @@ for data in datas:
                                        config[data]["mountpoint"],
                                        config[data]["filesystem"],
                                        config[data].get("options", None))
-    elif config[data]["type"] == "mdadm":
+    elif config[data]["type"] == "md":
         if "source" in config[data]:
             sources = [get_data(datas, config[data]["source"])]
         else:
             nb_sources = len([None for l in config[data] if l[:6] == "source"])
             sources = [get_data(datas, config[data][f"source{k}"]) \
                        for k in range(nb_sources)]
-        datas[data] = cmkinit.MdadmData(sources, config[data]["name"])
+        datas[data] = cmkinit.MdData(sources, config[data]["name"])
     else:
         raise Exception(f"Config type {config[data]['type']} does not exists")
 
