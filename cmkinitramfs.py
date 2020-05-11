@@ -75,7 +75,7 @@ def copyfile(src, dest=None):
         print(f"Stripping /usr/ from {dest}", file=sys.stderr)
         dest = dest.replace("/usr/", "/")
     # Check destination base directory exists (e.g. /bin)
-    if len(dest.split('/')) > 2 \
+    if os.path.dirname(dest) != "/" \
             and not os.path.isdir(f"{DESTDIR}/{dest.split('/')[1]}"):
         raise FileNotFoundError(f"{DESTDIR}/{dest.split('/')[1]}")
     dest = DESTDIR + dest
