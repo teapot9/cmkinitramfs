@@ -154,3 +154,15 @@ Configuration (**bold** = mandatory):
    *source1*, ... when one or more sources are needed. The indexing must
    start at 0.
 
+### Section type clone
+
+Defines the cloning of a directory to another.
+
+Configuration (**bold** = mandatory):
+ * **type**
+ * **need**
+ * **load-need**
+ * **source**
+ * **destination**: Specify the destination of the clone, same format as
+   *source*.
+

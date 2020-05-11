@@ -63,6 +63,9 @@ for data in datas:
             sources = [get_data(datas, config[data][f"source{k}"]) \
                        for k in range(nb_sources)]
         datas[data] = cmkinit.MdData(sources, config[data]["name"])
+    elif config[data]["type"] == "clone":
+        datas[data] = cmkinit.CloneData(get_data(datas, config[data]["source"]),
+                                        get_data(datas, config[data]["destination"]))
     else:
         raise Exception(f"Config type {config[data]['type']} does not exists")
 

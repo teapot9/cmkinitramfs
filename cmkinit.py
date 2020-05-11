@@ -524,3 +524,33 @@ class MdData(Data):
     def path(self):
         return "/dev/md/" + self.name
 
+
+class CloneData(Data):
+    """Data class for cloning data objects
+
+    Attributes:
+    source -- Data object: source directory
+    dest -- Data object: destination directory
+    """
+
+    def __init__(self, source, dest):
+        super().__init__()
+        self.source = source
+        self.dest = dest
+
+    def __str__(self):
+        return f"{self.source} to {self.dest}"
+
+    def load(self):
+        code = ""
+        code += self.pre_load()
+        code += f"echo 'Cloning {self.source} to {self.dest}'\n" \
+              + f"cp -aT \"{self.source.path()}\" \"{self.dest.path()}\" || " \
+              + _die(f"Failed to clone {self.source} to {self.dest}") + "\n" \
+              + "\n"
+        code += self.post_load()
+        return code
+
+    def path(self):
+        return self.dest.path()
+

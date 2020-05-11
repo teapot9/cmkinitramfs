@@ -131,6 +131,7 @@ mountpoints =
 # Optional: Mount options to use, defaults to "ro"
 #options = "ro"
 
+
 # MD RAID data source definition
 # [md-raid]
 
@@ -159,3 +160,30 @@ mountpoints =
 #source1 =
 #...
 
+
+# Clone data source definition
+# Allow to clone one data source to another
+# [my-clone]
+
+# Set the type to clone
+#type = clone
+
+# Comma separated list of data sources needed to use my-clone
+#need =
+
+# Comma separated list of data sources needed to load my-clone, but not
+# required ot use it
+#need =
+
+# Data source to clone
+# It can be a path or another data source.
+# The type of source should be specified before the source name: TYPE=source,
+# if it is not specified, it is supposed to be another data source.
+# Known types are: UUID, PATH, DATA.
+#source =
+
+# Data source to use as destination of the clone
+# Same format as source
+#destination =
+
+#source =
