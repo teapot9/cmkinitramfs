@@ -516,7 +516,8 @@ class MdData(Data):
         code += self.pre_unload()
         code += f"echo 'Stopping {self.name} MD RAID'\n" \
               + "MDADM_NO_UDEV=1 " \
-              + f"mdadm --stop \"{self.name}\"\n" \
+              + f"mdadm --stop \"{self.name}\" || " \
+              + _die(f"Failed to stop {self.name} MD RAID") + "\n" \
               + "\n"
         code += self.post_unload()
         return code
