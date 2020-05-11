@@ -486,7 +486,7 @@ class MdData(Data):
         super().__init__()
         self.sources = sources
         self.name = name
-        if len(self.sources) == 0:
+        if not self.sources:
             raise DataError(f"{self.name} has no source defined")
 
     def __str__(self):
