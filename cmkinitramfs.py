@@ -226,7 +226,7 @@ def find_duplicates():
     for root, _, files in os.walk(DESTDIR):
         for filename in files:
             filepath = root + "/" + filename
-            if not os.path.islink(filepath):
+            if os.path.isfile(filepath) and not os.path.islink(filepath):
                 files_dic[hash_file(filepath)].append(filepath)
 
     for key in files_dic:
