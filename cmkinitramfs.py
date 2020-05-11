@@ -13,6 +13,8 @@ import stat
 import shutil
 import glob
 import subprocess
+import hashlib
+import collections
 
 DESTDIR = "/tmp/initramfs"
 
@@ -202,4 +204,42 @@ def mkcpio():
 def cleanup():
     """Cleanup DESTDIR"""
     shutil.rmtree(DESTDIR)
+
+def hash_file(filepath, chunk_size=65536):
+    """Calculate SHA512 of a given file
+    filepath -- String: path of the file to hash
+    chunk_size -- Number of bytes per chunk of file to hash
+    Return the hash in a byte object
+    """
+    sha512 = hashlib.sha512()
+    with open(filepath, 'rb') as src:
+        for chunk in iter(lambda: src.read(chunk_size), b''):
+            sha512.update(chunk)
+    return sha512.digest()
+
+def find_duplicates():
+    """Generates tuples of duplicated files in DESTDIR"""
+    # files_dic: Dictionnary, keys are sha512 hash, value is a list
+    # of files sharing this hash
+    files_dic = collections.defaultdict(list)
+    for root, _, files in os.walk(DESTDIR):
+        for filename in files:
+            filepath = root + "/" + filename
+            if not os.path.islink(filepath):
+                files_dic[hash_file(filepath)].append(filepath)
+
+    for key in files_dic:
+        if len(files_dic[key]) > 1:
+            yield files_dic[key]
+
+def hardlink_duplicates():
+    """Hardlink all duplicated files in DESTDIR"""
+    for duplicates in find_duplicates():
+        print("Hardlinking duplicates " \
+              + str([k.replace(DESTDIR,'') for k in duplicates]),
+              file=sys.stderr)
+        source = duplicates.pop()
+        for duplicate in duplicates:
+            os.remove(duplicate)
+            os.link(source, duplicate)
 

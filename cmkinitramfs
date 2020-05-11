@@ -98,7 +98,7 @@ if "ext4" in filesystems:
     cmkinitramfs.copyexec("dumpe2fs")
     cmkinitramfs.copyexec("tune2fs")
     cmkinitramfs.copyexec("resize2fs")
-    #cmkinitramfs.copyexec("e2fsck")
+    cmkinitramfs.copyexec("e2fsck")
 
 # Keyboard
 if config["DEFAULT"].get("keymap"):
@@ -119,6 +119,9 @@ if config["DEFAULT"].get("keymap"):
 cmkinit_exec = "./cmkinit" if os.path.isfile("./cmkinit") else "cmkinit"
 init = subprocess.run([cmkinit_exec], stdout=subprocess.PIPE, check=True)
 cmkinitramfs.writefile(init.stdout, "/init", 0o755)
+
+# Find and hardlink duplicated files
+cmkinitramfs.hardlink_duplicates()
 
 # Create initramfs
 if not(args.debug) and not(args.dryrun):
