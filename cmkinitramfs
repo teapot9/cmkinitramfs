@@ -119,8 +119,26 @@ if "btrfs" in filesystems:
 
 # EXT4
 if "ext4" in filesystems:
+    info("Installing EXT4 utils")
     cmkinitramfs.copyexec("fsck.ext4")
     cmkinitramfs.copyexec("e2fsck")
+
+# XFS
+if "xfs" in filesystems:
+    info("Installing XFS utils")
+    cmkinitramfs.copyexec("fsck.xfs")
+    cmkinitramfs.copyexec("xfs_repair")
+
+# FAT
+if "fat" in filesystems or "vfat" in filesystems:
+    info("Installing FAT utils")
+    cmkinitramfs.copyexec("fsck.fat")
+    cmkinitramfs.copyexec("fsck.vfat")
+
+# F2FS
+if "f2fs" in filesystems:
+    info("Installing F2FS utils")
+    cmkinitramfs.copyexec("fsck.f2fs")
 
 # Keyboard
 if config["DEFAULT"].get("keymap"):
