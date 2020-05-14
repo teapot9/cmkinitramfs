@@ -100,9 +100,9 @@ def do_keymap(keymap_file):
     within the initramfs
     """
     return "echo 'Loading keymap'\n" \
-         + f"[ -f \"{keymap_file}\" ] || " \
+         + f"[ -f '{keymap_file}' ] || " \
          + _die(f"Failed to load keymap, file {keymap_file} not found") + "\n" \
-         + f"loadkmap <\"{keymap_file}\" || " \
+         + f"loadkmap <'{keymap_file}' || " \
          + _die(f"Failed to load keymap {keymap_file}") + "\n" \
          + "\n"
 
@@ -450,8 +450,8 @@ class MountData(Data):
               + "FSTAB_FILE='/dev/null' " \
               + f"fsck -t {self.filesystem} \"{self.source.path()}\" || "  \
               + _die(f"Failed to check filesystem {self.mountpoint}") + "\n" \
-              + (f"[ -d \"{self.mountpoint}\" ] || " \
-                 + f"mkdir \"{self.mountpoint}\" || " \
+              + (f"[ -d '{self.mountpoint}' ] || " \
+                 + f"mkdir '{self.mountpoint}' || " \
                  + _die(f"Failed to create directory {self.mountpoint}") \
                  + "\n" if os.path.dirname(self.mountpoint) == "/mnt" else "") \
               + f"mount -t {self.filesystem} -o '{self.options}' " \
