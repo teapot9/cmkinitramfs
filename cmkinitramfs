@@ -60,6 +60,7 @@ else:
 # Configure initramfs module
 if config["DEFAULT"].get("build-dir"):
     initramfs.DESTDIR = config["DEFAULT"]["build-dir"].strip()
+cmkinitramfs.QUIET = args.quiet
 
 # types: Set of data types used to boot
 types = set()

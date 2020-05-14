@@ -17,6 +17,7 @@ import hashlib
 import collections
 
 DESTDIR = "/tmp/initramfs"
+QUIET = False
 
 def mklayout(debug=False):
     """Create the base layout for initramfs
@@ -67,10 +68,12 @@ def copyfile(src, dest=None):
         dest = src
     # Strip /usr directory, not needed in initramfs
     if "/usr/local/" in dest:
-        print(f"Stripping /usr/local/ from {dest}", file=sys.stderr)
+        if not QUIET:
+            print(f"Stripping /usr/local/ from {dest}", file=sys.stderr)
         dest = dest.replace("/usr/local", "/")
     elif "/usr/" in dest:
-        print(f"Stripping /usr/ from {dest}", file=sys.stderr)
+        if not QUIET:
+            print(f"Stripping /usr/ from {dest}", file=sys.stderr)
         dest = dest.replace("/usr/", "/")
     # Check destination base directory exists (e.g. /bin)
     if os.path.dirname(dest) != "/" \
@@ -235,9 +238,10 @@ def find_duplicates():
 def hardlink_duplicates():
     """Hardlink all duplicated files in DESTDIR"""
     for duplicates in find_duplicates():
-        print("Hardlinking duplicates " \
-              + str([k.replace(DESTDIR,'') for k in duplicates]),
-              file=sys.stderr)
+        if not QUIET:
+            print("Hardlinking duplicates " \
+                  + str([k.replace(DESTDIR,'') for k in duplicates]),
+                  file=sys.stderr)
         source = duplicates.pop()
         for duplicate in duplicates:
             os.remove(duplicate)

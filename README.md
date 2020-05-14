@@ -52,6 +52,9 @@ modification to the initramfs directory should pass through it.
 This module provides a global variable `DESTDIR` to select the path of the
 initramfs temporary directory, it defaults to `/tmp/initramfs`.
 
+The global variable `QUIET` is a boolean, if set to True, it will reduce
+the information outputed to stderr.
+
 ## cmkinit.py
 
 Module providing functions related to the construction of the `/init` script,
