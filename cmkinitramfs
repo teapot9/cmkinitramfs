@@ -120,9 +120,6 @@ if "btrfs" in filesystems:
 # EXT4
 if "ext4" in filesystems:
     cmkinitramfs.copyexec("fsck.ext4")
-    cmkinitramfs.copyexec("dumpe2fs")
-    cmkinitramfs.copyexec("tune2fs")
-    cmkinitramfs.copyexec("resize2fs")
     cmkinitramfs.copyexec("e2fsck")
 
 # Keyboard
