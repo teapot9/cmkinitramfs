@@ -121,7 +121,7 @@ def do_switch_root(init, newroot):
       - Dismount /dev, /sys, /proc
       - Switch root
     init -- String: init process to execute from new root
-    newroot -- String: Absolute path of the new root
+    newroot -- Data: source to use as new root
     """
     return f"printk 'Run {init} as init process'\n" \
          + "awk '{ print $4 }' '/proc/sys/kernel/printk' " \
@@ -130,7 +130,7 @@ def do_switch_root(init, newroot):
          + "umount /proc || " + _die("Failed to unmount /proc") + "\n" \
          + "umount /sys || " + _die("Failed to unmount /sys") + "\n" \
          + "echo 'INITRAMFS: End'\n" \
-         + f"exec switch_root '{newroot}' '{init}'\n" \
+         + f"exec switch_root \"{newroot.path()}\" '{init}'\n" \
          + "\n"
 
 

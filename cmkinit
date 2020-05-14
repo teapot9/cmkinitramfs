@@ -99,7 +99,9 @@ print(cmkinit.do_maintenance(), end='')
 for mountpoint in config["DEFAULT"]["mountpoints"].split(','):
     if mountpoint:
         print(datas[mountpoint].load(), end='')
-print(cmkinit.do_switch_root(config["DEFAULT"].get("init", "/sbin/init"),
-                            "/mnt/root"),
-      end='')
+print(
+    cmkinit.do_switch_root(config["DEFAULT"].get("init", "/sbin/init"),
+                           datas[config["DEFAULT"]["root"]]),
+    end=''
+)
 
