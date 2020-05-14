@@ -202,7 +202,8 @@ def mkcpio():
 
 def cleanup():
     """Cleanup DESTDIR"""
-    shutil.rmtree(DESTDIR)
+    if os.path.exists(DESTDIR):
+        shutil.rmtree(DESTDIR)
 
 def hash_file(filepath, chunk_size=65536):
     """Calculate SHA512 of a given file

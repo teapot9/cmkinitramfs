@@ -26,6 +26,7 @@ cmkinitramfs [--help] [--debug] [--dry-run] [--output OUTPUT] [kernel]
  * `--output`: Change the path of the created CPIO archive. Defaults to
    `/usr/src/initramfs.cpio`. If this is set, the initramfs *will not*
    be installed to `/boot`. Set to "-" to output the CPIO archive to stdout.
+ * `--clean`: *Overwrite* the temporary directory to build initramfs.
  * `kernel`: Selects a specific kernel version, defaults to the current kernel
    in `/usr/src/linux`. This option is used to cleanup the initramfs from
    the kernel tree and force it's update (only for built-in initramfs).

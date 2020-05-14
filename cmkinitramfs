@@ -52,11 +52,19 @@ parser.add_argument(
     help="Set output cpio file and disable writing to /boot"
 )
 parser.add_argument(
+    "--clean", "-C", dest="clean", action="store_true",
+    help="Overwrite temporary directory if it exists"
+)
+parser.add_argument(
     "kernel", type=str, nargs='?',
     help="Select kernel version to cleanup rather than /usr/src/linux"
 )
 args = parser.parse_args()
 
+# Cleanup
+
+if args.clean:
+    cmkinitramfs.cleanup()
 
 # Build initramfs
 
