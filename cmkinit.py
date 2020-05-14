@@ -392,7 +392,7 @@ class LvmData(Data):
         code = ""
         code += self.pre_load()
         code += f"echo 'Enabling LVM logical volume {self.vg_name}/{self.lv_name}'\n" \
-              + "lvm lvchange --sysinit -a y " \
+              + "lvm lvchange --sysinit -a ly " \
               + f"'{self.vg_name}/{self.lv_name}' || " \
               + _die("Failed to enable LVM logical volume " \
                      + f"{self.vg_name}/{self.lv_name}") + "\n" \
@@ -408,7 +408,7 @@ class LvmData(Data):
         code += self.pre_unload()
         code += "echo 'Disabling LVM logical volume " \
               + f"{self.vg_name}/{self.lv_name}'\n" \
-              + "lvm lvchange --sysinit -a n " \
+              + "lvm lvchange --sysinit -a ln " \
               + f"'{self.vg_name}/{self.lv_name}' || " \
               + _die("Failed to disable LVM logical volume " \
                      + f"{self.vg_name}/{self.lv_name}") + "\n" \
