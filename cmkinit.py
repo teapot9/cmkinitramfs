@@ -77,7 +77,7 @@ def do_init():
          + _die("Failed to mount /sys") + "\n" \
          + "mount -t devtmpfs none /dev || " \
          + _die("Failed to mount /dev") + "\n" \
-         + "echo 2 1>'/proc/sys/kernel/printk'\n" \
+         + "echo 3 1>'/proc/sys/kernel/printk'\n" \
          + "\n"
 
 def do_cmdline():
