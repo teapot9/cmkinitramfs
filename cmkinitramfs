@@ -4,6 +4,8 @@
 # Reads configuration file from :
 #   - CMKINITCFG file if environment variable set
 #   - /etc/cmkinitramfs.ini by default
+# The CMKINIT_SCRIPT environment variable override the path of the
+# cmkinit script, which is by default searched in PATH
 #
 
 import cmkinitramfs
@@ -121,8 +123,8 @@ if config["DEFAULT"].get("keymap"):
     )
 
 # Create /init
-cmkinit_exec = "./cmkinit" if os.path.isfile("./cmkinit") else "cmkinit"
-init = subprocess.run([cmkinit_exec], stdout=subprocess.PIPE, check=True)
+init = subprocess.run([os.environ.get("CMKINIT_SCRIPT", "cmkinit")],
+    stdout=subprocess.PIPE, check=True)
 cmkinitramfs.writefile(init.stdout, "/init", 0o755)
 
 # Find and hardlink duplicated files

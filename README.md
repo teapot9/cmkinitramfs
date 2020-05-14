@@ -32,6 +32,9 @@ cmkinitramfs [--help] [--debug] [--dry-run] [--output OUTPUT] [kernel]
    the kernel tree and force it's update (only for built-in initramfs).
    Set to "none" to disable the cleanup.
 
+This script run `cmkinit`, the path of the executable can be overriden with
+the `CMKINIT_SCRIPT` environment variable.
+
 ## cmkinit
 
 Build the `/init` script according to the configuration file. This program is
@@ -63,6 +66,9 @@ This is the configuration file for both programs.
 
 It contains one `DEFAULT` section and one section for each data source used
 during the init process.
+
+It's default path is `/etc/cmkinitramfs.ini` and can be overriden by the
+`CMKINITCFG` environment variable.
 
 ### DEFAULT section
 
