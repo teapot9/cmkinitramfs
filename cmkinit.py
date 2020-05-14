@@ -37,7 +37,7 @@ def _die(message):
     This function will load a rescue shell with an error message,
     this is an abstraction for the rescue_shell function
     """
-    return f"rescue_shell \"FATAL: {message}\""
+    return f"rescue_shell 'FATAL: {message}'"
 
 def do_header(home="/root", path="/bin:/sbin"):
     """Create the /init header
@@ -348,12 +348,12 @@ class LuksData(Data):
     def load(self):
         code = ""
         code += self.pre_load()
-        code += f"echo 'Unlocking LUKS device {self.name}'\n" \
+        code += f"echo 'Unlocking LUKS device {self}'\n" \
               + "cryptsetup luksOpen " \
               + (f"--header \"{self.header.path()}\" " if self.header else "") \
               + (f"--key-file \"{self.key.path()}\" " if self.key else "") \
               + f"\"{self.source.path()}\" '{self.name}' || " \
-              + _die(f"Failed to unlock LUKS device {self.name}") + "\n" \
+              + _die(f"Failed to unlock LUKS device {self}") + "\n" \
               + "\n"
         code += self.post_load()
         return code
@@ -361,9 +361,9 @@ class LuksData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += f"echo 'Closing LUKS device {self.name}'\n" \
+        code += f"echo 'Closing LUKS device {self}'\n" \
            + f"cryptsetup luksClose '{self.name}' || " \
-           + _die(f"Failed to close LUKS device {self.name}") + "\n" \
+           + _die(f"Failed to close LUKS device {self}") + "\n" \
            + "\n"
         code += self.post_unload()
         return code
@@ -391,14 +391,12 @@ class LvmData(Data):
     def load(self):
         code = ""
         code += self.pre_load()
-        code += f"echo 'Enabling LVM logical volume {self.vg_name}/{self.lv_name}'\n" \
+        code += f"echo 'Enabling LVM logical volume {self}'\n" \
               + "lvm lvchange --sysinit -a ly " \
               + f"'{self.vg_name}/{self.lv_name}' || " \
-              + _die("Failed to enable LVM logical volume " \
-                     + f"{self.vg_name}/{self.lv_name}") + "\n" \
+              + _die(f"Failed to enable LVM logical volume {self}") + "\n" \
               + "lvm vgscan --mknodes || " \
-              + _die("Failed to create LVM nodes for " \
-                     + f"{self.vg_name}/{self.lv_name}") + "\n" \
+              + _die(f"Failed to create LVM nodes for {self}") + "\n" \
               + "\n"
         code += self.post_load()
         return code
@@ -406,12 +404,10 @@ class LvmData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += "echo 'Disabling LVM logical volume " \
-              + f"{self.vg_name}/{self.lv_name}'\n" \
+        code += f"echo 'Disabling LVM logical volume {self}'\n" \
               + "lvm lvchange --sysinit -a ln " \
               + f"'{self.vg_name}/{self.lv_name}' || " \
-              + _die("Failed to disable LVM logical volume " \
-                     + f"{self.vg_name}/{self.lv_name}") + "\n" \
+              + _die(f"Failed to disable LVM logical volume {self}") + "\n" \
               + "\n"
         code += self.post_unload()
         return code
@@ -446,17 +442,17 @@ class MountData(Data):
     def load(self):
         code = ""
         code += self.pre_load()
-        code += f"echo 'Mounting filesystem {self.mountpoint}'\n" \
+        code += f"echo 'Mounting filesystem {self}'\n" \
               + "FSTAB_FILE='/dev/null' " \
               + f"fsck -t {self.filesystem} \"{self.source.path()}\" || "  \
-              + _die(f"Failed to check filesystem {self.mountpoint}") + "\n" \
+              + _die(f"Failed to check filesystem {self}") + "\n" \
               + (f"[ -d '{self.mountpoint}' ] || " \
                  + f"mkdir '{self.mountpoint}' || " \
-                 + _die(f"Failed to create directory {self.mountpoint}") \
-                 + "\n" if os.path.dirname(self.mountpoint) == "/mnt" else "") \
+                 + _die(f"Failed to create directory {self}") + "\n" \
+                 if os.path.dirname(self.mountpoint) == "/mnt" else "") \
               + f"mount -t {self.filesystem} -o '{self.options}' " \
               + f"\"{self.source.path()}\" '{self.mountpoint}' || " \
-              + _die(f"Failed to mount filesystem {self.mountpoint}") + "\n" \
+              + _die(f"Failed to mount filesystem {self}") + "\n" \
               + "\n"
         code += self.post_load()
         return code
@@ -464,9 +460,9 @@ class MountData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += f"echo 'Unmounting filesystem {self.mountpoint}'\n" \
+        code += f"echo 'Unmounting filesystem {self}'\n" \
               + f"umount '{self.mountpoint}' || " \
-              + _die(f"Failed to unmount filesystem {self.mountpoint}") + "\n" \
+              + _die(f"Failed to unmount filesystem {self}") + "\n" \
               + "\n"
         code += self.post_unload()
         return code
@@ -488,7 +484,7 @@ class MdData(Data):
         self.sources = sources
         self.name = name
         if not self.sources:
-            raise DataError(f"{self.name} has no source defined")
+            raise DataError(f"{self} has no source defined")
 
     def __str__(self):
         return self.name
@@ -503,10 +499,10 @@ class MdData(Data):
                 sources_string += f"\"{source.path()}\" "
         code = ""
         code += self.pre_load()
-        code += f"echo 'Assembling MD RAID {self.name}'\n" \
+        code += f"echo 'Assembling MD RAID {self}'\n" \
               + "MDADM_NO_UDEV=1 " \
               + f"mdadm --assemble {sources_string}\"{self.name}\" || " \
-              + _die(f"Failed to assemble MD RAID {self.name}") + "\n" \
+              + _die(f"Failed to assemble MD RAID {self}") + "\n" \
               + "\n"
         code += self.post_load()
         return code
@@ -514,10 +510,10 @@ class MdData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += f"echo 'Stopping MD RAID {self.name}'\n" \
+        code += f"echo 'Stopping MD RAID {self}'\n" \
               + "MDADM_NO_UDEV=1 " \
               + f"mdadm --stop \"{self.name}\" || " \
-              + _die(f"Failed to stop MD RAID {self.name}") + "\n" \
+              + _die(f"Failed to stop MD RAID {self}") + "\n" \
               + "\n"
         code += self.post_unload()
         return code
@@ -545,9 +541,9 @@ class CloneData(Data):
     def load(self):
         code = ""
         code += self.pre_load()
-        code += f"echo 'Cloning {self.source} to {self.dest}'\n" \
+        code += f"echo 'Cloning {self}'\n" \
               + f"cp -aT \"{self.source.path()}\" \"{self.dest.path()}\" || " \
-              + _die(f"Failed to clone {self.source} to {self.dest}") + "\n" \
+              + _die(f"Failed to clone {self}") + "\n" \
               + "\n"
         code += self.post_load()
         return code
