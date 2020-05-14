@@ -37,7 +37,7 @@ def _die(message):
     This function will load a rescue shell with an error message,
     this is an abstraction for the rescue_shell function
     """
-    return f"rescue_shell \"{message}\""
+    return f"rescue_shell \"FATAL: {message}\""
 
 def do_header(home="/root", path="/bin:/sbin"):
     """Create the /init header
@@ -111,7 +111,7 @@ def do_maintenance():
     If the MAINTENANCE variable is set, load a rescue shell
     """
     return "[ -n \"${MAINTENANCE}\" ] && " \
-         + _die("Going into maintenance mode") + "\n" \
+         + "rescue_shell 'Going into maintenance mode'\n" \
          + "\n"
 
 def do_switch_root(init, newroot):
