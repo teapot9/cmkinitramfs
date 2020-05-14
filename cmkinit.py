@@ -58,7 +58,7 @@ def do_header(home="/root", path="/bin:/sbin"):
          + "\n" \
          + _fun_printk() \
          + "\n" \
-         + "echo 'ININTAMFS: Start'\n" \
+         + "echo 'INITRAMFS: Start'\n" \
          + "\n"
 
 def do_init():
@@ -129,7 +129,7 @@ def do_switch_root(init, newroot):
          + "umount /dev || " + _die("Failed to unmount /dev") + "\n" \
          + "umount /proc || " + _die("Failed to unmount /proc") + "\n" \
          + "umount /sys || " + _die("Failed to unmount /sys") + "\n" \
-         + "echo 'INITRAMFS; End'\n" \
+         + "echo 'INITRAMFS: End'\n" \
          + f"exec switch_root '{newroot}' '{init}'\n" \
          + "\n"
 
