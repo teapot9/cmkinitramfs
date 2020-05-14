@@ -391,10 +391,10 @@ class LvmData(Data):
     def load(self):
         code = ""
         code += self.pre_load()
-        code += f"echo 'Enabling logical volume {self.vg_name}/{self.lv_name}'\n" \
+        code += f"echo 'Enabling LVM logical volume {self.vg_name}/{self.lv_name}'\n" \
               + "lvm lvchange --sysinit -a y " \
               + f"'{self.vg_name}/{self.lv_name}' || " \
-              + _die("Failed to enable LVM volume " \
+              + _die("Failed to enable LVM logical volume " \
                      + f"{self.vg_name}/{self.lv_name}") + "\n" \
               + "lvm vgscan --mknodes || " \
               + _die("Failed to create LVM nodes for " \
@@ -406,11 +406,11 @@ class LvmData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += "echo 'Disabling logical volume " \
+        code += "echo 'Disabling LVM logical volume " \
               + f"{self.vg_name}/{self.lv_name}'\n" \
               + "lvm lvchange --sysinit -a n " \
               + f"'{self.vg_name}/{self.lv_name}' || " \
-              + _die("Failed to disable LVM volume " \
+              + _die("Failed to disable LVM logical volume " \
                      + f"{self.vg_name}/{self.lv_name}") + "\n" \
               + "\n"
         code += self.post_unload()
@@ -446,17 +446,17 @@ class MountData(Data):
     def load(self):
         code = ""
         code += self.pre_load()
-        code += f"echo 'Mounting {self.mountpoint} filesystem'\n" \
+        code += f"echo 'Mounting filesystem {self.mountpoint}'\n" \
               + "FSTAB_FILE='/dev/null' " \
               + f"fsck -t {self.filesystem} \"{self.source.path()}\" || "  \
-              + _die(f"Failed to check {self.mountpoint} filesystem") + "\n" \
+              + _die(f"Failed to check filesystem {self.mountpoint}") + "\n" \
               + (f"[ -d \"{self.mountpoint}\" ] || " \
                  + f"mkdir \"{self.mountpoint}\" || " \
                  + _die(f"Failed to create directory {self.mountpoint}") \
                  + "\n" if os.path.dirname(self.mountpoint) == "/mnt" else "") \
               + f"mount -t {self.filesystem} -o '{self.options}' " \
               + f"\"{self.source.path()}\" '{self.mountpoint}' || " \
-              + _die(f"Failed to mount {self.mountpoint} filesystem") + "\n" \
+              + _die(f"Failed to mount filesystem {self.mountpoint}") + "\n" \
               + "\n"
         code += self.post_load()
         return code
@@ -464,9 +464,9 @@ class MountData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += f"echo 'Unmounting {self.mountpoint} filesystem'\n" \
+        code += f"echo 'Unmounting filesystem {self.mountpoint}'\n" \
               + f"umount '{self.mountpoint}' || " \
-              + _die(f"Failed to unmount {self.mountpoint} filesystem") + "\n" \
+              + _die(f"Failed to unmount filesystem {self.mountpoint}") + "\n" \
               + "\n"
         code += self.post_unload()
         return code
@@ -503,10 +503,10 @@ class MdData(Data):
                 sources_string += f"\"{source.path()}\" "
         code = ""
         code += self.pre_load()
-        code += f"echo 'Assembling {self.name} MD RAID'\n" \
+        code += f"echo 'Assembling MD RAID {self.name}'\n" \
               + "MDADM_NO_UDEV=1 " \
               + f"mdadm --assemble {sources_string}\"{self.name}\" || " \
-              + _die(f"Failed to assemble {self.name} MD RAID") + "\n" \
+              + _die(f"Failed to assemble MD RAID {self.name}") + "\n" \
               + "\n"
         code += self.post_load()
         return code
@@ -514,10 +514,10 @@ class MdData(Data):
     def unload(self):
         code = ""
         code += self.pre_unload()
-        code += f"echo 'Stopping {self.name} MD RAID'\n" \
+        code += f"echo 'Stopping MD RAID {self.name}'\n" \
               + "MDADM_NO_UDEV=1 " \
               + f"mdadm --stop \"{self.name}\" || " \
-              + _die(f"Failed to stop {self.name} MD RAID") + "\n" \
+              + _die(f"Failed to stop MD RAID {self.name}") + "\n" \
               + "\n"
         code += self.post_unload()
         return code
