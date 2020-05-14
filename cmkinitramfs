@@ -17,6 +17,11 @@ import subprocess
 import shutil
 import glob
 
+def info(text):
+    """Print information string for the user"""
+    if not args.quiet:
+        print(text, file=sys.stderr)
+
 # Load configuration
 config = configparser.ConfigParser()
 if os.environ.get("CMKINITCFG"):
@@ -58,6 +63,10 @@ parser.add_argument(
     help="Overwrite temporary directory if it exists"
 )
 parser.add_argument(
+    "--quiet", "-q", dest="quiet", action="store_true",
+    help="Don't output status informations"
+)
+parser.add_argument(
     "kernel", type=str, nargs='?',
     help="Select kernel version to cleanup rather than /usr/src/linux"
 )
@@ -66,36 +75,44 @@ args = parser.parse_args()
 # Cleanup
 
 if args.clean:
+    info(f"Warning: Overwriting temporary directory {cmkinitramfs.DESTDIR}")
     cmkinitramfs.cleanup()
 
 # Build initramfs
 
+info("Building initramfs")
 cmkinitramfs.mklayout(debug=args.debug)
 
 # Copy user files
 if config["DEFAULT"].get("files"):
     for filepath in config["DEFAULT"]["files"].strip().split(':'):
+        info(f"Copying {filepath} to /root")
         cmkinitramfs.copyfile(filepath)
 
 # Busybox
+info("Installing busybox")
 cmkinitramfs.copyexec("busybox")
 cmkinitramfs.install_busybox()
 
 # Cryptsetup
 if "luks" in types:
+    info("Installing LUKS utils")
     cmkinitramfs.copyexec("cryptsetup")
     cmkinitramfs.copylib("libgcc_s.so.1")
 
 # LVM
 if "lvm" in types:
+    info("Installing LVM utils")
     cmkinitramfs.copyexec("lvm")
 
 # md
 if "md" in types:
+    info("Installing MD utils")
     cmkinitramfs.copyexec("mdadm")
 
 # BTRFS
 if "btrfs" in filesystems:
+    info("Installing BTRFS utils")
     cmkinitramfs.copyexec("btrfs")
     cmkinitramfs.copyexec("fsck.btrfs")
 
@@ -109,6 +126,7 @@ if "ext4" in filesystems:
 
 # Keyboard
 if config["DEFAULT"].get("keymap"):
+    info("Copying keymap to /root")
     gzip = subprocess.run(
         ["gzip", "-cd", config["DEFAULT"]["keymap"].strip()],
         stdout=subprocess.PIPE, check=True
@@ -123,16 +141,19 @@ if config["DEFAULT"].get("keymap"):
     )
 
 # Create /init
+info("Generating /init")
 init = subprocess.run([os.environ.get("CMKINIT_SCRIPT", "cmkinit")],
     stdout=subprocess.PIPE, check=True)
 cmkinitramfs.writefile(init.stdout, "/init", 0o755)
 
 # Find and hardlink duplicated files
+info("Hardlinking duplicated files")
 cmkinitramfs.hardlink_duplicates()
 
 # Create initramfs
 if not(args.debug) and not(args.dryrun):
     # Build cpio
+    info("Building CPIO archive")
     cpio = cmkinitramfs.mkcpio()
     if args.output == "-":
         sys.stdout.buffer.write(cpio)
@@ -142,17 +163,20 @@ if not(args.debug) and not(args.dryrun):
             filedest.write(cpio)
 
     # Cleanup temporary directory
+    info("Cleaning up temporary files")
     cmkinitramfs.cleanup()
 
     # Cleanup kernel's initramfs
     if args.kernel != "none":
         kver = args.kernel if args.kernel else "linux"
+        info(f"Cleaning up kernel {kver}")
         rm = glob.glob(f"/usr/src/{kver}/usr/initramfs_data.cpio*")
         for fname in rm:
             os.remove(fname)
 
     if not args.output:
         # Copy cpio to /boot
+        info("Installing initramfs to /boot")
         if os.path.isfile("/boot/initramfs.cpio.xz"):
             shutil.copyfile("/boot/initramfs.cpio.xz",
                             "/boot/initramfs.cpio.xz.old")
@@ -162,4 +186,6 @@ if not(args.debug) and not(args.dryrun):
         )
         with open("/boot/initramfs.cpio.xz", "wb") as filedest:
             filedest.write(xz.stdout)
+
+info("Success")
 
