@@ -407,6 +407,8 @@ class LvmData(Data):
               + "lvm lvchange --sysinit -a ln " \
               + f"'{self.vg_name}/{self.lv_name}' || " \
               + _die(f"Failed to disable LVM logical volume {self}") + "\n" \
+              + "lvm vgscan --mknodes || " \
+              + _die(f"Failed to remove LVM nodes for {self}") + "\n" \
               + "\n"
         code += self.post_unload()
         return code
