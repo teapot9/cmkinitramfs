@@ -386,7 +386,7 @@ class LvmData(Data):
         self.lv_name = lv_name
 
     def __str__(self):
-        return self.vg_name + "/" + self.vg_name
+        return self.vg_name + "/" + self.lv_name
 
     def load(self):
         code = ""
