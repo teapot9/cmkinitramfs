@@ -444,9 +444,10 @@ class MountData(Data):
         code = ""
         code += self.pre_load()
         code += f"echo 'Mounting filesystem {self}'\n" \
-              + "FSTAB_FILE='/dev/null' " \
-              + f"fsck -t {self.filesystem} \"{self.source.path()}\" || "  \
-              + _die(f"Failed to check filesystem {self}") + "\n" \
+              + ("FSTAB_FILE='/dev/null' " \
+                 + f"fsck -t {self.filesystem} \"{self.source.path()}\" || "  \
+                 + _die(f"Failed to check filesystem {self}") + "\n" \
+                 if self.source.path() != "none" else "") \
               + (f"[ -d '{self.mountpoint}' ] || " \
                  + f"mkdir '{self.mountpoint}' || " \
                  + _die(f"Failed to create directory {self}") + "\n" \
