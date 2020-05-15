@@ -242,8 +242,7 @@ class Data:
         if not self._is_loaded:
             raise DataError(f"{self} is not loaded")
         if self._is_final or self._needed_by:
-            raise DataError(f"{self} is still needed or not temporary, deps = "
-                            + [str(k) for k in self._needed_by])
+            raise DataError(f"{self} is still needed or not temporary")
         return code
 
     def post_unload(self):
