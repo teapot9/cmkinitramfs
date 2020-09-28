@@ -12,6 +12,7 @@ herited classes for multiple source of data.
 
 import os.path
 
+
 def _fun_rescue_shell():
     """Rescue shell
     This function takes one argument and drop the user to /bin/sh,
@@ -24,6 +25,7 @@ def _fun_rescue_shell():
          + "\texec '/bin/sh'\n" \
          + "}\n"
 
+
 def _fun_printk():
     """Outputs a string to kernel log and to stderr"""
     return "printk()\n" \
@@ -32,12 +34,14 @@ def _fun_printk():
          + "\techo \"$1\" 1>&2\n" \
          + "}\n"
 
+
 def _die(message):
     """Returns a string stopping the boot process
     This function will load a rescue shell with an error message,
     this is an abstraction for the rescue_shell function
     """
     return f"rescue_shell 'FATAL: {message}'"
+
 
 def do_header(home="/root", path="/bin:/sbin"):
     """Create the /init header
@@ -61,6 +65,7 @@ def do_header(home="/root", path="/bin:/sbin"):
          + "echo 'INITRAMFS: Start'\n" \
          + "\n"
 
+
 def do_init():
     """Initialize the init environment
     This action will:
@@ -80,6 +85,7 @@ def do_init():
          + "echo 3 1>'/proc/sys/kernel/printk'\n" \
          + "\n"
 
+
 def do_cmdline():
     """Parse the kernel command line for known parameters
     Parsed parameters are:
@@ -94,6 +100,7 @@ def do_cmdline():
          + "done\n" \
          + "\n"
 
+
 def do_keymap(keymap_file):
     """Load the keymap
     keymap_file -- String: absolute path to the keymap file
@@ -106,6 +113,7 @@ def do_keymap(keymap_file):
          + _die(f"Failed to load keymap {keymap_file}") + "\n" \
          + "\n"
 
+
 def do_maintenance():
     """Check for maintenance
     If the MAINTENANCE variable is set, load a rescue shell
@@ -113,6 +121,7 @@ def do_maintenance():
     return "[ -n \"${MAINTENANCE}\" ] && " \
          + "rescue_shell 'Going into maintenance mode'\n" \
          + "\n"
+
 
 def do_switch_root(init, newroot):
     """Cleanup and switch root
@@ -132,6 +141,7 @@ def do_switch_root(init, newroot):
          + "echo 'INITRAMFS: End'\n" \
          + f"exec switch_root \"{newroot.path()}\" '{init}'\n" \
          + "\n"
+
 
 
 class Data:
@@ -552,4 +562,3 @@ class CloneData(Data):
 
     def path(self):
         return self.dest.path()
-

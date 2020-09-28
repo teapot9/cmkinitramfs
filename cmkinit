@@ -104,4 +104,3 @@ print(
                            datas[config["DEFAULT"]["root"]]),
     end=''
 )
-

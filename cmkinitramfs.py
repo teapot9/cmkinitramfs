@@ -19,6 +19,7 @@ import collections
 DESTDIR = "/tmp/initramfs"
 QUIET = False
 
+
 def mklayout(debug=False):
     """Create the base layout for initramfs
     debug -- bool: Run in debug mode, do not create nodes (allows to be run as
@@ -51,6 +52,7 @@ def mklayout(debug=False):
     os.mknod(f"{DESTDIR}/dev/console", 0o600 | stat.S_IFCHR, os.makedev(5, 1))
     os.mknod(f"{DESTDIR}/dev/tty", 0o666 | stat.S_IFCHR, os.makedev(5, 0))
     os.mknod(f"{DESTDIR}/dev/null", 0o666 | stat.S_IFCHR, os.makedev(1, 3))
+
 
 def copyfile(src, dest=None):
     """Copy a file to the initramfs
@@ -86,6 +88,7 @@ def copyfile(src, dest=None):
     os.makedirs(os.path.dirname(dest), mode=0o755, exist_ok=True)
     shutil.copy(src, dest, follow_symlinks=True)
 
+
 def findlib(lib):
     """Search a library in the system
     Uses /etc/ld.so.conf, /etc/ld.so.conf.d/*.conf and LD_LIBRARY_PATH
@@ -120,6 +123,7 @@ def findlib(lib):
             return f"{libdir}/{lib}"
     raise FileNotFoundError(lib)
 
+
 def copylib(src, dest=None):
     """Copy a library to the initramfs
     src -- String: Source library absolute/relative path, or just the name
@@ -132,6 +136,7 @@ def copylib(src, dest=None):
         src = findlib(src)
     src = os.path.abspath(src)
     copyfile(src, dest)
+
 
 def findexec(executable):
     """Search an executable within PATH environment variable"""
@@ -150,6 +155,7 @@ def findexec(executable):
         if os.path.isfile(f"{execdir}/{executable}"):
             return f"{execdir}/{executable}"
     raise FileNotFoundError(executable)
+
 
 def copyexec(src, dest=None):
     """Copy an executable to the initramfs
@@ -172,6 +178,7 @@ def copyexec(src, dest=None):
         if lib:
             copylib(lib)
 
+
 def writefile(data, dest, mode=0o644):
     """Write data to a file in initramfs
     data -- Bytes: data to write
@@ -183,6 +190,7 @@ def writefile(data, dest, mode=0o644):
         filedest.write(data)
     os.chmod(DESTDIR + dest, mode)
 
+
 def install_busybox():
     """Create busybox symlinks"""
 
@@ -191,6 +199,7 @@ def install_busybox():
     busybox = findexec("busybox")
     for applet in cmd.stdout.decode().strip().split('\n'):
         copyfile(busybox, "/" + applet)
+
 
 def mkcpio():
     """Create CPIO archive from initramfs, returns bytes"""
@@ -203,10 +212,12 @@ def mkcpio():
     os.chdir(oldpwd)
     return cpio.stdout
 
+
 def cleanup():
     """Cleanup DESTDIR"""
     if os.path.exists(DESTDIR):
         shutil.rmtree(DESTDIR)
+
 
 def hash_file(filepath, chunk_size=65536):
     """Calculate SHA512 of a given file
@@ -219,6 +230,7 @@ def hash_file(filepath, chunk_size=65536):
         for chunk in iter(lambda: src.read(chunk_size), b''):
             sha512.update(chunk)
     return sha512.digest()
+
 
 def find_duplicates():
     """Generates tuples of duplicated files in DESTDIR"""
@@ -235,6 +247,7 @@ def find_duplicates():
         if len(files_dic[key]) > 1:
             yield files_dic[key]
 
+
 def hardlink_duplicates():
     """Hardlink all duplicated files in DESTDIR"""
     for duplicates in find_duplicates():
@@ -246,4 +259,3 @@ def hardlink_duplicates():
         for duplicate in duplicates:
             os.remove(duplicate)
             os.link(source, duplicate)
-
