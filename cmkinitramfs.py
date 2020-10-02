@@ -7,14 +7,14 @@ DESTDIR -- Defines the directory in which the initramfs will be built,
   defaults to /tmp/initramfs.
 """
 
-import os
-import sys
-import stat
-import shutil
-import glob
-import subprocess
-import hashlib
 import collections
+import glob
+import hashlib
+import os
+import shutil
+import stat
+import subprocess
+import sys
 
 DESTDIR = "/tmp/initramfs"
 QUIET = False
