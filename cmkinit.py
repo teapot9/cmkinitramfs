@@ -18,21 +18,25 @@ def _fun_rescue_shell():
     This function takes one argument and drop the user to /bin/sh,
     the argument is the error string for the user.
     """
-    return "rescue_shell()\n" \
-         + "{\n" \
-         + "\tprintk \"$1\"\n" \
-         + "\techo 'Dropping you into a shell'\n" \
-         + "\texec '/bin/sh'\n" \
-         + "}\n"
+    return (
+        "rescue_shell()\n"
+        "{\n"
+        "\tprintk \"$1\"\n"
+        "\techo 'Dropping you into a shell'\n"
+        "\texec '/bin/sh'\n"
+        "}\n"
+    )
 
 
 def _fun_printk():
     """Outputs a string to kernel log and to stderr"""
-    return "printk()\n" \
-         + "{\n" \
-         + "\techo \"initramfs: $1\" 1>/dev/kmsg\n" \
-         + "\techo \"$1\" 1>&2\n" \
-         + "}\n"
+    return (
+        "printk()\n"
+        "{\n"
+        "\techo \"initramfs: $1\" 1>/dev/kmsg\n"
+        "\techo \"$1\" 1>&2\n"
+        "}\n"
+    )
 
 
 def _die(message):
@@ -51,19 +55,19 @@ def do_header(home="/root", path="/bin:/sbin"):
       - Configure PATH variable, defaults to /bin:/sbin
       - Declare functions
     """
-    return "#!/bin/sh\n" \
-         + "\n" \
-         + f"HOME='{home}'\n" \
-         + "export HOME\n" \
-         + f"PATH='{path}'\n" \
-         + "export PATH\n" \
-         + "\n" \
-         + _fun_rescue_shell() \
-         + "\n" \
-         + _fun_printk() \
-         + "\n" \
-         + "echo 'INITRAMFS: Start'\n" \
-         + "\n"
+    return (
+        "#!/bin/sh\n"
+        "\n"
+        f"HOME='{home}'\n"
+        "export HOME\n"
+        f"PATH='{path}'\n"
+        "export PATH\n"
+        "\n"
+        f"{_fun_rescue_shell()}\n"
+        f"{_fun_printk()}\n"
+        "echo 'INITRAMFS: Start'\n"
+        "\n"
+    )
 
 
 def do_init():
@@ -73,17 +77,19 @@ def do_init():
       - Mount /proc, /sys, /dev
       - Set kernel log level to 3
     """
-    return "echo 'Initialization'\n" \
-         + "test $$ -eq 1 || " \
-         + _die("init expects to be run as PID 1, current PID is $$") + "\n" \
-         + "mount -t proc none /proc || " \
-         + _die("Failed to mount /proc") + "\n" \
-         + "mount -t sysfs none /sys || " \
-         + _die("Failed to mount /sys") + "\n" \
-         + "mount -t devtmpfs none /dev || " \
-         + _die("Failed to mount /dev") + "\n" \
-         + "echo 3 1>'/proc/sys/kernel/printk'\n" \
-         + "\n"
+    return (
+        "echo 'Initialization'\n"
+        "test $$ -eq 1 || "
+        f"{_die('init expects to be run as PID 1, current PID is $$')}\n"
+        "mount -t proc none /proc || "
+        f"{_die('Failed to mount /proc')}\n"
+        "mount -t sysfs none /sys || "
+        f"{_die('Failed to mount /sys')}\n"
+        "mount -t devtmpfs none /dev || "
+        f"{_die('Failed to mount /dev')}\n"
+        "echo 3 1>'/proc/sys/kernel/printk'\n"
+        "\n"
+    )
 
 
 def do_cmdline():
@@ -92,13 +98,15 @@ def do_cmdline():
       - rescue_shell: Immediately starts a rescue shell
       - maintenance: Starts a rescue shell after mounting rootfs
     """
-    return "for cmdline in $(cat /proc/cmdline); do\n" \
-         + "\tcase \"${cmdline}\" in\n" \
-         + "\t\trescue_shell) rescue_shell 'Manual rescue shell';;\n" \
-         + "\t\tmaintenance) MAINTENANCE=true;;\n" \
-         + "\tesac\n" \
-         + "done\n" \
-         + "\n"
+    return (
+        "for cmdline in $(cat /proc/cmdline); do\n"
+        "\tcase \"${cmdline}\" in\n"
+        "\t\trescue_shell) rescue_shell 'Manual rescue shell';;\n"
+        "\t\tmaintenance) MAINTENANCE=true;;\n"
+        "\tesac\n"
+        "done\n"
+        "\n"
+    )
 
 
 def do_keymap(keymap_file):
@@ -106,21 +114,25 @@ def do_keymap(keymap_file):
     keymap_file -- String: absolute path to the keymap file
     within the initramfs
     """
-    return "echo 'Loading keymap'\n" \
-         + f"[ -f '{keymap_file}' ] || " \
-         + _die(f"Failed to load keymap, file {keymap_file} not found") + "\n" \
-         + f"loadkmap <'{keymap_file}' || " \
-         + _die(f"Failed to load keymap {keymap_file}") + "\n" \
-         + "\n"
+    return (
+        "echo 'Loading keymap'\n"
+        f"[ -f '{keymap_file}' ] || "
+        f"{_die(f'Failed to load keymap, file {keymap_file} not found')}\n"
+        f"loadkmap <'{keymap_file}' || "
+        f"{_die(f'Failed to load keymap {keymap_file}')}\n"
+        "\n"
+    )
 
 
 def do_maintenance():
     """Check for maintenance
     If the MAINTENANCE variable is set, load a rescue shell
     """
-    return "[ -n \"${MAINTENANCE}\" ] && " \
-         + "rescue_shell 'Going into maintenance mode'\n" \
-         + "\n"
+    return (
+        "[ -n \"${MAINTENANCE}\" ] && "
+        "rescue_shell 'Going into maintenance mode'\n"
+        "\n"
+    )
 
 
 def do_switch_root(init, newroot):
@@ -132,16 +144,17 @@ def do_switch_root(init, newroot):
     init -- String: init process to execute from new root
     newroot -- Data: source to use as new root
     """
-    return f"printk 'Run {init} as init process'\n" \
-         + "awk '{ print $4 }' '/proc/sys/kernel/printk' " \
-         + "1>'/proc/sys/kernel/printk'\n" \
-         + "umount /dev || " + _die("Failed to unmount /dev") + "\n" \
-         + "umount /proc || " + _die("Failed to unmount /proc") + "\n" \
-         + "umount /sys || " + _die("Failed to unmount /sys") + "\n" \
-         + "echo 'INITRAMFS: End'\n" \
-         + f"exec switch_root \"{newroot.path()}\" '{init}'\n" \
-         + "\n"
-
+    return (
+        f"printk 'Run {init} as init process'\n"
+        "awk '{ print $4 }' '/proc/sys/kernel/printk' "
+        "1>'/proc/sys/kernel/printk'\n"
+        "umount /dev || {_die('Failed to unmount /dev')}\n"
+        "umount /proc || {_die('Failed to unmount /proc')}\n"
+        "umount /sys || {_die('Failed to unmount /sys')}\n"
+        "echo 'INITRAMFS: End'\n"
+        f"exec switch_root \"{newroot.path()}\" '{init}'\n"
+        "\n"
+    )
 
 
 class Data:
@@ -355,27 +368,27 @@ class LuksData(Data):
         return self.name
 
     def load(self):
-        code = ""
-        code += self.pre_load()
-        code += f"echo 'Unlocking LUKS device {self}'\n" \
-              + "cryptsetup luksOpen " \
-              + (f"--header \"{self.header.path()}\" " if self.header else "") \
-              + (f"--key-file \"{self.key.path()}\" " if self.key else "") \
-              + f"\"{self.source.path()}\" '{self.name}' || " \
-              + _die(f"Failed to unlock LUKS device {self}") + "\n" \
-              + "\n"
-        code += self.post_load()
-        return code
+        header = f'--header "{self.header.path()}" ' if self.header else ''
+        key_file = f'--key-file "{self.key.path()}" ' if self.key else ''
+        return (
+            f"{self.pre_load()}"
+            f"echo 'Unlocking LUKS device {self}'\n"
+            f"cryptsetup luksOpen {header}{key_file}"
+            f"\"{self.source.path()}\" '{self.name}' || "
+            f"{_die(f'Failed to unlock LUKS device {self}')}\n"
+            "\n"
+            f"{self.post_load()}"
+        )
 
     def unload(self):
-        code = ""
-        code += self.pre_unload()
-        code += f"echo 'Closing LUKS device {self}'\n" \
-           + f"cryptsetup luksClose '{self.name}' || " \
-           + _die(f"Failed to close LUKS device {self}") + "\n" \
-           + "\n"
-        code += self.post_unload()
-        return code
+        return (
+            f"{self.pre_unload()}"
+            f"echo 'Closing LUKS device {self}'\n"
+            f"cryptsetup luksClose '{self.name}' || "
+            f"{_die(f'Failed to close LUKS device {self}')}\n"
+            "\n"
+            f"{self.post_unload()}"
+        )
 
     def path(self):
         return "/dev/mapper/" + self.name
@@ -398,30 +411,30 @@ class LvmData(Data):
         return self.vg_name + "/" + self.lv_name
 
     def load(self):
-        code = ""
-        code += self.pre_load()
-        code += f"echo 'Enabling LVM logical volume {self}'\n" \
-              + "lvm lvchange --sysinit -a ly " \
-              + f"'{self.vg_name}/{self.lv_name}' || " \
-              + _die(f"Failed to enable LVM logical volume {self}") + "\n" \
-              + "lvm vgscan --mknodes || " \
-              + _die(f"Failed to create LVM nodes for {self}") + "\n" \
-              + "\n"
-        code += self.post_load()
-        return code
+        return (
+            f"{self.pre_load()}"
+            f"echo 'Enabling LVM logical volume {self}'\n"
+            "lvm lvchange --sysinit -a ly "
+            f"'{self.vg_name}/{self.lv_name}' || "
+            f"{_die(f'Failed to enable LVM logical volume {self}')}\n"
+            "lvm vgscan --mknodes || "
+            f"{_die(f'Failed to create LVM nodes for {self}')}\n"
+            "\n"
+            f"{self.post_load()}"
+        )
 
     def unload(self):
-        code = ""
-        code += self.pre_unload()
-        code += f"echo 'Disabling LVM logical volume {self}'\n" \
-              + "lvm lvchange --sysinit -a ln " \
-              + f"'{self.vg_name}/{self.lv_name}' || " \
-              + _die(f"Failed to disable LVM logical volume {self}") + "\n" \
-              + "lvm vgscan --mknodes || " \
-              + _die(f"Failed to remove LVM nodes for {self}") + "\n" \
-              + "\n"
-        code += self.post_unload()
-        return code
+        return (
+            f"{self.pre_unload()}"
+            f"echo 'Disabling LVM logical volume {self}'\n"
+            "lvm lvchange --sysinit -a ln "
+            f"'{self.vg_name}/{self.lv_name}' || "
+            f"{_die(f'Failed to disable LVM logical volume {self}')}\n"
+            "lvm vgscan --mknodes || "
+            f"{_die(f'Failed to remove LVM nodes for {self}')}\n"
+            "\n"
+            f"{self.post_unload()}"
+        )
 
     def path(self):
         # If LV or VG name has an hyphen '-', LVM doubles it in the path
@@ -451,33 +464,41 @@ class MountData(Data):
         return self.mountpoint
 
     def load(self):
-        code = ""
-        code += self.pre_load()
-        code += f"echo 'Mounting filesystem {self}'\n" \
-              + ("FSTAB_FILE='/dev/null' " \
-                 + f"fsck -t {self.filesystem} \"{self.source.path()}\" || "  \
-                 + _die(f"Failed to check filesystem {self}") + "\n" \
-                 if self.source.path() != "none" else "") \
-              + (f"[ -d '{self.mountpoint}' ] || " \
-                 + f"mkdir '{self.mountpoint}' || " \
-                 + _die(f"Failed to create directory {self}") + "\n" \
-                 if os.path.dirname(self.mountpoint) == "/mnt" else "") \
-              + f"mount -t {self.filesystem} -o '{self.options}' " \
-              + f"\"{self.source.path()}\" '{self.mountpoint}' || " \
-              + _die(f"Failed to mount filesystem {self}") + "\n" \
-              + "\n"
-        code += self.post_load()
-        return code
+        fsck = (
+            "FSTAB_FILE='/dev/null' "
+            f'fsck -t {self.filesystem} "{self.source.path()}" || '
+            f"{_die(f'Failed to check filesystem {self}')}"
+            if self.source.path() != 'none'
+            else ''
+        )
+        mkdir = (
+            f"[ -d '{self.mountpoint}' ] || "
+            f"mkdir '{self.mountpoint}' || "
+            f"{_die(f'Failed to create directory {self}')}"
+            if os.path.dirname(self.mountpoint) == '/mnt'
+            else ''
+        )
+        return (
+            f"{self.pre_load()}"
+            f"echo 'Mounting filesystem {self}'\n"
+            f"{fsck}\n"
+            f"{mkdir}\n"
+            f"mount -t {self.filesystem} -o '{self.options}' "
+            f"\"{self.source.path()}\" '{self.mountpoint}' || "
+            f"{_die(f'Failed to mount filesystem {self}')}\n"
+            "\n"
+            f"{self.post_load()}"
+        )
 
     def unload(self):
-        code = ""
-        code += self.pre_unload()
-        code += f"echo 'Unmounting filesystem {self}'\n" \
-              + f"umount '{self.mountpoint}' || " \
-              + _die(f"Failed to unmount filesystem {self}") + "\n" \
-              + "\n"
-        code += self.post_unload()
-        return code
+        return (
+            f"{self.pre_unload()}"
+            f"echo 'Unmounting filesystem {self}'\n"
+            f"umount '{self.mountpoint}' || "
+            f"{_die(f'Failed to unmount filesystem {self}')}\n"
+            "\n"
+            f"{self.post_unload()}"
+        )
 
     def path(self):
         return self.mountpoint
@@ -509,26 +530,26 @@ class MdData(Data):
                 sources_string += f"--uuid \"{source.uuid}\" "
             else:
                 sources_string += f"\"{source.path()}\" "
-        code = ""
-        code += self.pre_load()
-        code += f"echo 'Assembling MD RAID {self}'\n" \
-              + "MDADM_NO_UDEV=1 " \
-              + f"mdadm --assemble {sources_string}'{self.name}' || " \
-              + _die(f"Failed to assemble MD RAID {self}") + "\n" \
-              + "\n"
-        code += self.post_load()
-        return code
+        return (
+            f"{self.pre_load()}"
+            f"echo 'Assembling MD RAID {self}'\n"
+            "MDADM_NO_UDEV=1 "
+            f"mdadm --assemble {sources_string}'{self.name}' || "
+            f"{_die(f'Failed to assemble MD RAID {self}')}\n"
+            "\n"
+            f"{self.post_load()}"
+        )
 
     def unload(self):
-        code = ""
-        code += self.pre_unload()
-        code += f"echo 'Stopping MD RAID {self}'\n" \
-              + "MDADM_NO_UDEV=1 " \
-              + f"mdadm --stop '{self.name}' || " \
-              + _die(f"Failed to stop MD RAID {self}") + "\n" \
-              + "\n"
-        code += self.post_unload()
-        return code
+        return (
+            f"{self.pre_unload()}"
+            f"echo 'Stopping MD RAID {self}'\n"
+            "MDADM_NO_UDEV=1 "
+            f"mdadm --stop '{self.name}' || "
+            f"{_die(f'Failed to stop MD RAID {self}')}\n"
+            "\n"
+            f"{self.post_unload()}"
+        )
 
     def path(self):
         return "/dev/md/" + self.name
@@ -551,14 +572,14 @@ class CloneData(Data):
         return f"{self.source} to {self.dest}"
 
     def load(self):
-        code = ""
-        code += self.pre_load()
-        code += f"echo 'Cloning {self}'\n" \
-              + f"cp -aT \"{self.source.path()}\" \"{self.dest.path()}\" || " \
-              + _die(f"Failed to clone {self}") + "\n" \
-              + "\n"
-        code += self.post_load()
-        return code
+        return (
+            f"{self.pre_load()}"
+            f"echo 'Cloning {self}'\n"
+            f"cp -aT \"{self.source.path()}\" \"{self.dest.path()}\" || "
+            f"{_die(f'Failed to clone {self}')}\n"
+            "\n"
+            f"{self.post_load()}"
+        )
 
     def path(self):
         return self.dest.path()
