@@ -6,7 +6,7 @@ with open("README.md", "r") as readme:
     long_description = readme.read()
 
 setuptools.setup(
-    name="cmkinitramfs-yoshi",
+    name="cmkinitramfs",
     version="0.1.0",
     description="A customizable simple initramfs generator",
     long_description=long_description,
