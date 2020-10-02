@@ -108,7 +108,7 @@ def findlib(lib):
 
     # List files in /etc/ld.so.conf and /etc/ld.so.conf.d/*.conf
     dirlists = glob.glob("/etc/ld.so.conf") \
-            + glob.glob("/etc/ld.so.conf.d/*.conf")
+        + glob.glob("/etc/ld.so.conf.d/*.conf")
 
     # For each file, add listed directories to libdirs
     for dirlist in dirlists:
@@ -252,7 +252,7 @@ def hardlink_duplicates():
     """Hardlink all duplicated files in DESTDIR"""
     for duplicates in find_duplicates():
         if not QUIET:
-            print("Hardlinking duplicates " \
+            print("Hardlinking duplicates "
                   + str([k.replace(DESTDIR,'') for k in duplicates]),
                   file=sys.stderr)
         source = duplicates.pop()
