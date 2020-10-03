@@ -150,15 +150,16 @@ mountpoints =
 #name =
 
 # Define the data sources to use to assemble the RAID
-# If there is only one data source, use *source* (e.g.
-# source = UUID=xxxx-yyyy)
+# If there are multiple data sources, separate each source by a new line with
+# indentation
+# Sources uses the same syntax as other source configurations
+# Example 1:
+# source = UUID=xxxx-yyyy
+# Example 2:
+# source =
+#     /dev/sda1
+#     /dev/sdb1
 #source =
-# If there are multiple data sources, use *sourceN* with N the number of
-# the data source, starting at 0 (e.g. source0 = /dev/sda1 and source1 =
-# /dev/sdb1)
-#source0 =
-#source1 =
-#...
 
 
 # Clone data source definition

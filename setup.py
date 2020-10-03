@@ -24,6 +24,11 @@ setuptools.setup(
         "share/cmkinitramfs",
         ["cmkinitramfs.ini.default", "cmkinitramfs.ini.example"]
     )],
-    scripts=["cmkinit", "cmkinitramfs"],
+    scripts=["cmkinitramfs"],
+    entry_points={
+        'console_scripts': [
+            'cmkinit = cmkinit:entry_point',
+        ]
+    }
 )
 
