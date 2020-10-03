@@ -7,7 +7,9 @@ DESTDIR -- Defines the directory in which the initramfs will be built,
   defaults to /tmp/initramfs.
 """
 
+import argparse
 import collections
+import configparser
 import glob
 import hashlib
 import os
@@ -15,6 +17,8 @@ import shutil
 import stat
 import subprocess
 import sys
+
+import cmkinit
 
 DESTDIR = "/tmp/initramfs"
 QUIET = False
@@ -259,3 +263,192 @@ def hardlink_duplicates():
         for duplicate in duplicates:
             os.remove(duplicate)
             os.link(source, duplicate)
+
+
+def mkinitramfs(
+        data_types=None, filesystems=None, user_files=None,
+        keymap_src=None, keymap_dest='/root/keymap.bmap',
+        output='/usr/src/initramfs.cpio', kernel='linux',
+        force_cleanup=False, debug=False,
+        ):
+    """Create the initramfs"""
+    if data_types is None:
+        data_types = set()
+    if filesystems is None:
+        filesystems = set()
+    if user_files is None:
+        user_files = set()
+
+    # Cleanup and initialization
+    if force_cleanup:
+        print(f"Warning: Overwriting temporari directory {DESTDIR}")
+        cleanup()
+    print("Building initramfs")
+    mklayout(debug=debug)
+
+    # Copy user files
+    for filepath in user_files:
+        print(f"Copying {filepath} to /root")
+        copyfile(filepath)
+
+    # Busybox
+    print("Installing busybox")
+    copyexec('busybox')
+    install_busybox()
+
+    # Files for data types and filesystems
+
+    if "luks" in data_types:
+        print("Installing LUKS utils")
+        copyexec("cryptsetup")
+        copylib("libgcc_s.so.1")
+
+    if "lvm" in data_types:
+        print("Installing LVM utils")
+        copyexec("lvm")
+
+    if "md" in data_types:
+        print("Installing MD utils")
+        copyexec("mdadm")
+
+    if "btrfs" in filesystems:
+        print("Installing BTRFS utils")
+        copyexec("btrfs")
+        copyexec("fsck.btrfs")
+
+    if "ext4" in filesystems:
+        print("Installing EXT4 utils")
+        copyexec("fsck.ext4")
+        copyexec("e2fsck")
+
+    if "xfs" in filesystems:
+        print("Installing XFS utils")
+        copyexec("fsck.xfs")
+        copyexec("xfs_repair")
+
+    if "fat" in filesystems or "vfat" in filesystems:
+        print("Installing FAT utils")
+        copyexec("fsck.fat")
+        copyexec("fsck.vfat")
+
+    if "f2fs" in filesystems:
+        print("Installing F2FS utils")
+        copyexec("fsck.f2fs")
+
+    if keymap_src:
+        print(f"Copying keymap to {keymap_dest}")
+        gzip = subprocess.run(
+            ["gzip", "-cd", keymap_src],
+            stdout=subprocess.PIPE, check=True
+        )
+        loadkeys = subprocess.run(
+            ["loadkeys", "--bkeymap"],
+            input=gzip.stdout, stdout=subprocess.PIPE, check=True
+        )
+        with open(f'{DESTDIR}/{keymap_dest}', 'wb') as dest:
+            dest.write(loadkeys.stdout)
+        os.chmod(f'{DESTDIR}/{keymap_dest}', 0o644)
+
+    print("Generatine /init")
+    with open(f'{DESTDIR}/init', 'wt') as dest:
+        dest.write(cmkinit.mkinit(*cmkinit.read_config()))
+    os.chmod(f'{DESTDIR}/init', 0o755)
+
+    print("Hardlinking duplicated files")
+    hardlink_duplicates()
+
+    # Create initramfs
+    if not debug:
+        print("Building CPIO archive")
+        cpio = mkcpio()
+        if output == "-":
+            sys.stdout.buffer.write(cpio)
+        else:
+            with open(output, 'wb') as dest:
+                dest.write(cpio)
+
+        print("Cleaning up temporary files")
+        cleanup()
+
+        # Cleanup kernel's initramfs
+        if kernel != "none":
+            print(f"Cleaning up kernel {kernel}")
+            rm = glob.glob(f"/usr/src/{kernel}/usr/initramfs_data.cpio*")
+            for fname in rm:
+                os.remove(fname)
+
+        if not output:
+            print("Installing initramfs to /boot")
+            if os.path.isfile("/boot/initramfs.cpio.xz"):
+                shutil.copyfile("/boot/initramfs.cpio.xz",
+                                "/boot/initramfs.cpio.xz.old")
+            xz = subprocess.run(
+                ["xz", "-zkc", "--check=crc32", "/usr/src/initramfs.cpio"],
+                stdout=subprocess.PIPE, check=True
+            )
+            with open("/boot/initramfs.cpio.xz", "wb") as filedest:
+                filedest.write(xz.stdout)
+
+
+def _find_config_file():
+    """Find a configuration file to use"""
+    if os.environ.get('CMKINITCFG'):
+        return os.environ['CMKINITCFG']
+    if os.path.isfile('./cmkinitramfs.ini'):
+        return './cmkinitramfs.ini'
+    if os.path.isfile('/etc/cmkinitramfs.ini'):
+        return '/etc/cmkinitramfs.ini'
+    return None
+
+
+def read_config(config_file=_find_config_file()):
+    """Read the config file"""
+    global DESTDIR
+    if config_file is None:
+        raise Exception("No configuration file found")
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    if config["DEFAULT"].get("build-dir") is not None:
+        DESTDIR = config["DEFAULT"]["build-dir"]
+
+    data_types = {
+        config[data_id]['type'] for data_id in config.sections()
+    }
+    filesystems = {
+        config[data_id].get('filesystem') for data_id in config.sections()
+    }
+    user_files = set()
+    if config['DEFAULT'].get('files') is not None:
+        user_files = set(
+            config['DEFAULT']['files'].strip().split(':')
+        )
+    keymap_src = config['DEFAULT'].get('keymap')
+    keymap_dest = config['DEFAULT'].get('keymap-file', '/root/keymap.bmap')
+
+    return (data_types, filesystems, user_files, keymap_src, keymap_dest)
+
+
+def entry_point():
+    """Main entry point"""
+    parser = argparse.ArgumentParser(description="Build an initramfs.")
+    parser.add_argument(
+        "--debug", "-d", action="store_true", default=False,
+        help="Enable debugging mode: non root and does not create final archive"
+    )
+    parser.add_argument(
+        "--output", "-o", type=str, default='/usr/src/initramfs.cpio',
+        help="Set output cpio file and disable writing to /boot"
+    )
+    parser.add_argument(
+        "--clean", "-C", action="store_true", default=False,
+        help="Overwrite temporary directory if it exists"
+    )
+    parser.add_argument(
+        "kernel", type=str, nargs='?', default='linux',
+        help="Select kernel version to cleanup rather than /usr/src/linux"
+    )
+    args = parser.parse_args()
+
+    mkinitramfs(*read_config(),
+                args.output, args.kernel, args.clean, args.debug)

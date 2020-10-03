@@ -24,11 +24,14 @@ setuptools.setup(
         "share/cmkinitramfs",
         ["cmkinitramfs.ini.default", "cmkinitramfs.ini.example"]
     )],
-    scripts=["cmkinitramfs"],
     entry_points={
         'console_scripts': [
             'cmkinit = cmkinit:entry_point',
-        ]
-    }
+            'cmkinitramfs = cmkinitramfs:entry_point',
+        ],
+    },
+    install_requires=[
+        'pyelftools',
+    ],
 )
 
