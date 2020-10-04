@@ -18,7 +18,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: POSIX :: Linux",
     ],
-    py_modules=["cmkinit", "cmkinitramfs"],
+    packages=['cmkinitramfs'],
     python_requires=">=3.6",
     data_files=[(
         "share/cmkinitramfs",
@@ -26,8 +26,8 @@ setuptools.setup(
     )],
     entry_points={
         'console_scripts': [
-            'cmkinit = cmkinit:entry_point',
-            'cmkinitramfs = cmkinitramfs:entry_point',
+            'cmkinit = cmkinitramfs.mkinit:entry_point',
+            'cmkinitramfs = cmkinitramfs.mkramfs:entry_point',
         ],
     },
     install_requires=[

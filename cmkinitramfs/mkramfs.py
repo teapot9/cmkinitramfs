@@ -18,7 +18,7 @@ import stat
 import subprocess
 import sys
 
-import cmkinit
+import cmkinitramfs.mkinit as mkinit
 
 DESTDIR = "/tmp/initramfs"
 QUIET = False
@@ -351,7 +351,7 @@ def mkinitramfs(
 
     print("Generatine /init")
     with open(f'{DESTDIR}/init', 'wt') as dest:
-        dest.write(cmkinit.mkinit(*cmkinit.read_config()))
+        dest.write(mkinit.mkinit(*mkinit.read_config()))
     os.chmod(f'{DESTDIR}/init', 0o755)
 
     print("Hardlinking duplicated files")
