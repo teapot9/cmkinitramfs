@@ -1,37 +1,52 @@
-"""setuptools based setup module"""
+"""A customizable simple initramfs generator"""
 
 import setuptools
 
-with open("README.md", "r") as readme:
-    long_description = readme.read()
+from cmkinitramfs import (__author__, __doc__, __email__, __license__,
+                          __name__, __url__, __version__)
 
 setuptools.setup(
-    name="cmkinitramfs",
-    version="0.1.0",
-    description="A customizable simple initramfs generator",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url="https://github.com/lleseur/cmkinitramfs",
-    author="lleseur",
-    classifiers=[
-        "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3",
-        "Operating System :: POSIX :: Linux",
+    name=__name__,
+    version=__version__,
+    description=__doc__,
+    long_description=open('README.md', 'r').read(),
+    long_description_content_type='text/markdown',
+
+    author=__author__,
+    author_email=__email__,
+    license=__license__,
+    url=__url__,
+
+    python_requires='>=3.6',
+    install_requires=[
+        'pyelftools',
     ],
+    extras_require={},
+
     packages=['cmkinitramfs'],
-    python_requires=">=3.6",
-    data_files=[(
-        "share/cmkinitramfs",
-        ["cmkinitramfs.ini.default", "cmkinitramfs.ini.example"]
-    )],
     entry_points={
         'console_scripts': [
             'cmkinit = cmkinitramfs.mkinit:entry_point',
             'cmkinitramfs = cmkinitramfs.mkramfs:entry_point',
         ],
     },
-    install_requires=[
-        'pyelftools',
-    ],
-)
 
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Environment :: Console",
+        "Intended Audience :: System Administrators",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: POSIX :: Linux",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: Implementation :: CPython",
+        "Programming Language :: Python :: Implementation :: PyPy",
+        "Topic :: System :: Boot",
+        "Topic :: System :: Boot :: Init",
+        "Topic :: Utilities",
+    ],
+    keywords=['initramfs', 'initramfs-generator'],
+)
