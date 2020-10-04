@@ -6,3 +6,10 @@ __license__ = 'MIT'
 __copyright__ = 'Copyright (c) 2020 Louis Leseur'
 __url__ = 'https://github.com/lleseur/fand'
 __version__ = '0.1.0'
+
+import logging
+
+logging.basicConfig(
+    format='%(levelname)s: %(message)s',
+    level=logging.NOTSET,
+)

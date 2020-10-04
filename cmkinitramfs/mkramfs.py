@@ -12,6 +12,7 @@ import collections
 import configparser
 import glob
 import hashlib
+import logging
 import os
 import shutil
 import stat
@@ -20,6 +21,7 @@ import sys
 
 import cmkinitramfs.mkinit as mkinit
 
+logger = logging.getLogger(__name__)
 DESTDIR = "/tmp/initramfs"
 QUIET = False
 
@@ -74,12 +76,10 @@ def copyfile(src, dest=None):
         dest = src
     # Strip /usr directory, not needed in initramfs
     if "/usr/local/" in dest:
-        if not QUIET:
-            print(f"Stripping /usr/local/ from {dest}", file=sys.stderr)
+        logger.info("Stripping /usr/local/ from %s", dest)
         dest = dest.replace("/usr/local", "/")
     elif "/usr/" in dest:
-        if not QUIET:
-            print(f"Stripping /usr/ from {dest}", file=sys.stderr)
+        logger.info("Stripping /usr/ from %s", dest)
         dest = dest.replace("/usr/", "/")
     # Check destination base directory exists (e.g. /bin)
     if os.path.dirname(dest) != "/" \
@@ -255,10 +255,8 @@ def find_duplicates():
 def hardlink_duplicates():
     """Hardlink all duplicated files in DESTDIR"""
     for duplicates in find_duplicates():
-        if not QUIET:
-            print("Hardlinking duplicates "
-                  + str([k.replace(DESTDIR,'') for k in duplicates]),
-                  file=sys.stderr)
+        logger.info("Hardlinking duplicates %s",
+                    [k.replace(DESTDIR, '') for k in duplicates])
         source = duplicates.pop()
         for duplicate in duplicates:
             os.remove(duplicate)
@@ -281,62 +279,62 @@ def mkinitramfs(
 
     # Cleanup and initialization
     if force_cleanup:
-        print(f"Warning: Overwriting temporari directory {DESTDIR}")
+        logger.warning("Overwriting temporary directory %s", DESTDIR)
         cleanup()
-    print("Building initramfs")
+    logger.info("Building initramfs")
     mklayout(debug=debug)
 
     # Copy user files
     for filepath in user_files:
-        print(f"Copying {filepath} to /root")
+        logger.info("Copying %s to /root", filepath)
         copyfile(filepath)
 
     # Busybox
-    print("Installing busybox")
+    logger.info("Installing busybox")
     copyexec('busybox')
     install_busybox()
 
     # Files for data types and filesystems
 
     if "luks" in data_types:
-        print("Installing LUKS utils")
+        logger.info("Installing LUKS utils")
         copyexec("cryptsetup")
         copylib("libgcc_s.so.1")
 
     if "lvm" in data_types:
-        print("Installing LVM utils")
+        logger.info("Installing LVM utils")
         copyexec("lvm")
 
     if "md" in data_types:
-        print("Installing MD utils")
+        logger.info("Installing MD utils")
         copyexec("mdadm")
 
     if "btrfs" in filesystems:
-        print("Installing BTRFS utils")
+        logger.info("Installing BTRFS utils")
         copyexec("btrfs")
         copyexec("fsck.btrfs")
 
     if "ext4" in filesystems:
-        print("Installing EXT4 utils")
+        logger.info("Installing EXT4 utils")
         copyexec("fsck.ext4")
         copyexec("e2fsck")
 
     if "xfs" in filesystems:
-        print("Installing XFS utils")
+        logger.info("Installing XFS utils")
         copyexec("fsck.xfs")
         copyexec("xfs_repair")
 
     if "fat" in filesystems or "vfat" in filesystems:
-        print("Installing FAT utils")
+        logger.info("Installing FAT utils")
         copyexec("fsck.fat")
         copyexec("fsck.vfat")
 
     if "f2fs" in filesystems:
-        print("Installing F2FS utils")
+        logger.info("Installing F2FS utils")
         copyexec("fsck.f2fs")
 
     if keymap_src:
-        print(f"Copying keymap to {keymap_dest}")
+        logger.info("Copying keymap to %s", keymap_dest)
         gzip = subprocess.run(
             ["gzip", "-cd", keymap_src],
             stdout=subprocess.PIPE, check=True
@@ -349,17 +347,17 @@ def mkinitramfs(
             dest.write(loadkeys.stdout)
         os.chmod(f'{DESTDIR}/{keymap_dest}', 0o644)
 
-    print("Generatine /init")
+    logger.info("Generatine /init")
     with open(f'{DESTDIR}/init', 'wt') as dest:
         dest.write(mkinit.mkinit(*mkinit.read_config()))
     os.chmod(f'{DESTDIR}/init', 0o755)
 
-    print("Hardlinking duplicated files")
+    logger.info("Hardlinking duplicated files")
     hardlink_duplicates()
 
     # Create initramfs
     if not debug:
-        print("Building CPIO archive")
+        logger.info("Building CPIO archive")
         cpio = mkcpio()
         if output == "-":
             sys.stdout.buffer.write(cpio)
@@ -367,18 +365,18 @@ def mkinitramfs(
             with open(output, 'wb') as dest:
                 dest.write(cpio)
 
-        print("Cleaning up temporary files")
+        logger.info("Cleaning up temporary files")
         cleanup()
 
         # Cleanup kernel's initramfs
         if kernel != "none":
-            print(f"Cleaning up kernel {kernel}")
+            logger.info("Cleaning up kernel %s", kernel)
             rm = glob.glob(f"/usr/src/{kernel}/usr/initramfs_data.cpio*")
             for fname in rm:
                 os.remove(fname)
 
         if not output:
-            print("Installing initramfs to /boot")
+            logger.info("Installing initramfs to /boot")
             if os.path.isfile("/boot/initramfs.cpio.xz"):
                 shutil.copyfile("/boot/initramfs.cpio.xz",
                                 "/boot/initramfs.cpio.xz.old")
@@ -448,7 +446,25 @@ def entry_point():
         "kernel", type=str, nargs='?', default='linux',
         help="Select kernel version to cleanup rather than /usr/src/linux"
     )
+    parser.add_argument(
+        '--verbose', '-v', action='store_true', default=False,
+        help="Be verbose",
+    )
+    parser.add_argument(
+        '--quiet', '-q', action='store_true', default=False,
+        help="Only show errors",
+    )
     args = parser.parse_args()
+
+    if args.debug:
+        level = logging.DEBUG
+    elif args.verbose:
+        level = logging.INFO
+    elif args.quiet:
+        level = logging.ERROR
+    else:
+        level = logging.WARNING
+    logging.getLogger().setLevel(level)
 
     mkinitramfs(*read_config(),
                 args.output, args.kernel, args.clean, args.debug)
