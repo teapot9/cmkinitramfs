@@ -594,7 +594,7 @@ def mkinit(root, mounts=None, keymap_src=None, keymap_dest=None,
     script = [do_header(), do_init(), do_cmdline()]
     if keymap_src is not None:
         script.append(keymap_dest if keymap_dest is not None
-                    else '/root/keymap.bmap')
+                      else '/root/keymap.bmap')
     script.append(root.load())
     script.append(do_maintenance())
     for mount in mounts:
