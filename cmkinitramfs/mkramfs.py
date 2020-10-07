@@ -9,7 +9,6 @@ DESTDIR -- Defines the directory in which the initramfs will be built,
 
 import argparse
 import collections
-import configparser
 import glob
 import hashlib
 import logging
@@ -20,6 +19,7 @@ import subprocess
 import sys
 
 import cmkinitramfs.mkinit as mkinit
+import cmkinitramfs.util as util
 
 logger = logging.getLogger(__name__)
 DESTDIR = "/tmp/initramfs"
@@ -264,6 +264,7 @@ def hardlink_duplicates():
 
 
 def mkinitramfs(
+        init_str,
         data_types=None, filesystems=None, user_files=None,
         keymap_src=None, keymap_dest='/root/keymap.bmap',
         output='/usr/src/initramfs.cpio', kernel='linux',
@@ -271,10 +272,13 @@ def mkinitramfs(
         ):
     """Create the initramfs"""
     if data_types is None:
+        logger.warning("No data types selected")
         data_types = set()
     if filesystems is None:
+        logger.warning("No filesystem selected")
         filesystems = set()
     if user_files is None:
+        logger.info("No user file selected")
         user_files = set()
 
     # Cleanup and initialization
@@ -349,7 +353,7 @@ def mkinitramfs(
 
     logger.info("Generatine /init")
     with open(f'{DESTDIR}/init', 'wt') as dest:
-        dest.write(mkinit.mkinit(*mkinit.read_config()))
+        dest.write(init_str)
     os.chmod(f'{DESTDIR}/init', 0o755)
 
     logger.info("Hardlinking duplicated files")
@@ -399,34 +403,6 @@ def _find_config_file():
     return None
 
 
-def read_config(config_file=_find_config_file()):
-    """Read the config file"""
-    global DESTDIR
-    if config_file is None:
-        raise Exception("No configuration file found")
-    config = configparser.ConfigParser()
-    config.read(config_file)
-
-    if config["DEFAULT"].get("build-dir") is not None:
-        DESTDIR = config["DEFAULT"]["build-dir"]
-
-    data_types = {
-        config[data_id]['type'] for data_id in config.sections()
-    }
-    filesystems = {
-        config[data_id].get('filesystem') for data_id in config.sections()
-    }
-    user_files = set()
-    if config['DEFAULT'].get('files') is not None:
-        user_files = set(
-            config['DEFAULT']['files'].strip().split(':')
-        )
-    keymap_src = config['DEFAULT'].get('keymap')
-    keymap_dest = config['DEFAULT'].get('keymap-file', '/root/keymap.bmap')
-
-    return (data_types, filesystems, user_files, keymap_src, keymap_dest)
-
-
 def entry_point():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="Build an initramfs.")
@@ -466,5 +442,24 @@ def entry_point():
         level = logging.WARNING
     logging.getLogger().setLevel(level)
 
-    mkinitramfs(*read_config(),
-                args.output, args.kernel, args.clean, args.debug)
+    ramfs_args = ('data_types', 'filesystems', 'user_files', 'keymap_src',
+                  'keymap_dest')
+    init_args = ('root', 'mounts', 'keymap_src', 'keymap_dest', 'init')
+    config = util.read_config()
+    mkinitramfs(
+        # init_str
+        mkinit.mkinit(**{
+            arg: config[arg] for arg in init_args
+            if config.get(arg) is not None
+        }),
+        # args from config
+        **{
+            arg: config[arg] for arg in ramfs_args
+            if config.get(arg) is not None
+        },
+        # args from cmdline
+        output=args.output,
+        kernel=args.kernel,
+        force_cleanup=args.clean,
+        debug=args.debug,
+    )
