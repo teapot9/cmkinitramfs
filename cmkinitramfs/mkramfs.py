@@ -9,9 +9,11 @@ DESTDIR -- Defines the directory in which the initramfs will be built,
 
 import argparse
 import collections
+import gzip
 import glob
 import hashlib
 import logging
+import lzma
 import os
 import shutil
 import stat
@@ -176,12 +178,12 @@ def copyexec(src, dest=None):
     copyfile(src, dest)
 
     # Find linked libraries
-    cmd = subprocess.run(["lddtree", "--list", "--skip-non-elfs", src],
-                         stdout=subprocess.PIPE, check=True)
-    for lib in cmd.stdout.decode().strip().split('\n'):
-        if lib:
-            copylib(lib)
-
+    cmd = ["lddtree", "--list", "--skip-non-elfs", src]
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
+        for line in proc.stdout:
+            copylib(line.decode().strip())
+        if proc.wait() != 0:
+            raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
 def writefile(data, dest, mode=0o644):
     """Write data to a file in initramfs
@@ -198,23 +200,30 @@ def writefile(data, dest, mode=0o644):
 def install_busybox():
     """Create busybox symlinks"""
 
-    cmd = subprocess.run(["busybox", "--list-full"],
-                         stdout=subprocess.PIPE, check=True)
     busybox = findexec("busybox")
-    for applet in cmd.stdout.decode().strip().split('\n'):
-        copyfile(busybox, "/" + applet)
+    cmd = ['busybox', '--list-full']
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
+        for line in proc.stdout:
+            copyfile(busybox, '/' + line.decode().strip())
+        if proc.wait() != 0:
+            raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
 
-def mkcpio():
-    """Create CPIO archive from initramfs, returns bytes"""
+def mkcpio(dest):
+    """Create CPIO archive from initramfs
+    dest -- File object into which the cpio archive will be writen
+    """
     oldpwd = os.getcwd()
     os.chdir(DESTDIR)
-    find = subprocess.run(["find", ".", "-print0"],
-                          stdout=subprocess.PIPE, check=True)
-    cpio = subprocess.run(["cpio", "--null", "--create", "--format=newc"],
-                          input=find.stdout, stdout=subprocess.PIPE, check=True)
+    cmd = ["find", ".", "-print0"]
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE) as find:
+        cmd = ['cpio', '--null', '--create', '--format=newc']
+        with subprocess.Popen(cmd, stdin=find.stdout, stdout=dest) as cpio:
+            if cpio.wait() != 0:
+                raise subprocess.CalledProcessError(cpio.returncode, cpio.args)
+        if find.wait() != 0:
+            raise subprocess.CalledProcessError(find.returncode, find.args)
     os.chdir(oldpwd)
-    return cpio.stdout
 
 
 def cleanup():
@@ -339,16 +348,10 @@ def mkinitramfs(
 
     if keymap_src:
         logger.info("Copying keymap to %s", keymap_dest)
-        gzip = subprocess.run(
-            ["gzip", "-cd", keymap_src],
-            stdout=subprocess.PIPE, check=True
-        )
-        loadkeys = subprocess.run(
-            ["loadkeys", "--bkeymap"],
-            input=gzip.stdout, stdout=subprocess.PIPE, check=True
-        )
-        with open(f'{DESTDIR}/{keymap_dest}', 'wb') as dest:
-            dest.write(loadkeys.stdout)
+        with gzip.open(keymap_src, 'rb') as km_src, \
+                open(f'{DESTDIR}/{keymap_dest}', 'rb') as km_dest:
+            cmd = ["loadkeys", "--bkeymap"]
+            subprocess.run(cmd, check=True, stdin=km_src, stdout=km_dest)
         os.chmod(f'{DESTDIR}/{keymap_dest}', 0o644)
 
     logger.info("Generatine /init")
@@ -362,12 +365,13 @@ def mkinitramfs(
     # Create initramfs
     if not debug:
         logger.info("Building CPIO archive")
-        cpio = mkcpio()
         if output == "-":
-            sys.stdout.buffer.write(cpio)
+            sys.stdout.mode = 'wb'
+            mkcpio(sys.stdout.buffer)
+            sys.stdout.mode = 'w'
         else:
             with open(output, 'wb') as dest:
-                dest.write(cpio)
+                mkcpio(dest)
 
         logger.info("Cleaning up temporary files")
         cleanup()
@@ -384,12 +388,10 @@ def mkinitramfs(
             if os.path.isfile("/boot/initramfs.cpio.xz"):
                 shutil.copyfile("/boot/initramfs.cpio.xz",
                                 "/boot/initramfs.cpio.xz.old")
-            xz = subprocess.run(
-                ["xz", "-zkc", "--check=crc32", "/usr/src/initramfs.cpio"],
-                stdout=subprocess.PIPE, check=True
-            )
-            with open("/boot/initramfs.cpio.xz", "wb") as filedest:
-                filedest.write(xz.stdout)
+            with open('/usr/src/initramfs.cpio', 'rb') as cpio,  \
+                    lzma.open('/boot/initramfs.cpio.xz', 'wb',
+                              format=FORMAT_XZ) as cpioxz:
+                shutil.copyfileobj(cpio, cpioxz)
 
 
 def _find_config_file():
