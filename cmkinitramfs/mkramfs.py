@@ -185,18 +185,6 @@ def copyexec(src, dest=None):
         if proc.wait() != 0:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
-def writefile(data, dest, mode=0o644):
-    """Write data to a file in initramfs
-    data -- Bytes: data to write
-    dest -- String: destination's absolute path without DESTDIR
-    mode -- File's permissions, defaults to 0o644
-    """
-
-    with open(DESTDIR + dest, "wb") as filedest:
-        filedest.write(data)
-    os.chmod(DESTDIR + dest, mode)
-
-
 def install_busybox():
     """Create busybox symlinks"""
 
