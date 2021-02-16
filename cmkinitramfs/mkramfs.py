@@ -62,17 +62,21 @@ def mklayout(debug=False):
     os.mknod(f"{DESTDIR}/dev/null", 0o666 | stat.S_IFCHR, os.makedev(1, 3))
 
 
-def copyfile(src, dest=None):
+def copyfile(src, dest=None, deps=True):
     """Copy a file to the initramfs
     If the file is a symlink, it is dereferenced
+    If the file is an ELF file, its dependencies are also copied
     src -- String: source, an absolute or relative path
     dest -- String: destination's absolute path without DESTDIR,
       default is the same as source (e.g. /root/file)
+    deps -- Bool: copy dependencies (for ELF)
     """
 
-    # Configure src and dest
+    # Sanity checks
     if not os.path.exists(src):
         raise FileNotFoundError(src)
+
+    # Configure paths
     src = os.path.abspath(src)
     if not dest:
         dest = src
@@ -91,6 +95,12 @@ def copyfile(src, dest=None):
 
     if os.path.exists(dest):
         return
+
+    # Copy dependencies
+    if deps:
+        for dep in find_elf_deps(src):
+            copyfile(dep)
+
     os.makedirs(os.path.dirname(dest), mode=0o755, exist_ok=True)
     shutil.copy(src, dest, follow_symlinks=True)
 
@@ -102,6 +112,9 @@ def findlib(lib):
     /etc/ld.so.conf and /etc/ld.so.conf.d/*.conf contains
     one directory per line
     """
+
+    if os.path.isfile(lib):
+        return lib
 
     # Get list of directories to search
     libdirs = []
@@ -130,22 +143,11 @@ def findlib(lib):
     raise FileNotFoundError(lib)
 
 
-def copylib(src, dest=None):
-    """Copy a library to the initramfs
-    src -- String: Source library absolute/relative path, or just the name
-    dest -- String: destination's absolute path without DESTDIR,
-      default is the same as the source path
-    """
-
-    # Configure src and dest
-    if not os.path.isfile(src):
-        src = findlib(src)
-    src = os.path.abspath(src)
-    copyfile(src, dest)
-
-
 def findexec(executable):
     """Search an executable within PATH environment variable"""
+
+    if os.path.isfile(executable):
+        return executable
 
     # Get set of directories to search
     execdirs = set()
@@ -163,25 +165,19 @@ def findexec(executable):
     raise FileNotFoundError(executable)
 
 
-def copyexec(src, dest=None):
-    """Copy an executable to the initramfs
-    src -- String: executable's absolute/relative path, or just
-      the name (will be searched in PATH)
-    dest -- String: destination's absolute path without DESTDIR,
-      default is the same as the source path
+def find_elf_deps(src):
+    """Find ELF dependencies
+    Yields nothing if not an ELF file
+    src -- String: elf file path
     """
-
-    # Configure src and dest
-    if not os.path.isfile(src):
-        src = findexec(src)
+    logger.debug("Parsing ELF deps for %s", src)
     src = os.path.abspath(src)
-    copyfile(src, dest)
-
-    # Find linked libraries
     cmd = ["lddtree", "--list", "--skip-non-elfs", src]
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
         for line in proc.stdout:
-            copylib(line.decode().strip())
+            fname = os.path.abspath(line.decode().strip())
+            if fname != src:
+                yield fname
         if proc.wait() != 0:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
@@ -192,7 +188,7 @@ def install_busybox():
     cmd = ['busybox', '--list-full']
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
         for line in proc.stdout:
-            copyfile(busybox, '/' + line.decode().strip())
+            copyfile(busybox, '/' + line.decode().strip(), deps=False)
         if proc.wait() != 0:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
@@ -292,47 +288,47 @@ def mkinitramfs(
 
     # Busybox
     logger.info("Installing busybox")
-    copyexec('busybox')
+    copyfile(findexec('busybox'))
     install_busybox()
 
     # Files for data types and filesystems
 
     if "luks" in data_types:
         logger.info("Installing LUKS utils")
-        copyexec("cryptsetup")
-        copylib("libgcc_s.so.1")
+        copyfile(findexec("cryptsetup"))
+        copyfile(findlib("libgcc_s.so.1"))
 
     if "lvm" in data_types:
         logger.info("Installing LVM utils")
-        copyexec("lvm")
+        copyfile(findexec("lvm"))
 
     if "md" in data_types:
         logger.info("Installing MD utils")
-        copyexec("mdadm")
+        copyfile(findexec("mdadm"))
 
     if "btrfs" in filesystems:
         logger.info("Installing BTRFS utils")
-        copyexec("btrfs")
-        copyexec("fsck.btrfs")
+        copyfile(findexec("btrfs"))
+        copyfile(findexec("fsck.btrfs"))
 
     if "ext4" in filesystems:
         logger.info("Installing EXT4 utils")
-        copyexec("fsck.ext4")
-        copyexec("e2fsck")
+        copyfile(findexec("fsck.ext4"))
+        copyfile(findexec("e2fsck"))
 
     if "xfs" in filesystems:
         logger.info("Installing XFS utils")
-        copyexec("fsck.xfs")
-        copyexec("xfs_repair")
+        copyfile(findexec("fsck.xfs"))
+        copyfile(findexec("xfs_repair"))
 
     if "fat" in filesystems or "vfat" in filesystems:
         logger.info("Installing FAT utils")
-        copyexec("fsck.fat")
-        copyexec("fsck.vfat")
+        copyfile(findexec("fsck.fat"))
+        copyfile(findexec("fsck.vfat"))
 
     if "f2fs" in filesystems:
         logger.info("Installing F2FS utils")
-        copyexec("fsck.f2fs")
+        copyfile(findexec("fsck.f2fs"))
 
     if keymap_src:
         logger.info("Copying keymap to %s", keymap_dest)
