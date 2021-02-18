@@ -9,7 +9,6 @@ DESTDIR -- Defines the directory in which the initramfs will be built,
 
 import argparse
 import collections
-import gzip
 import glob
 import hashlib
 import logging
@@ -332,10 +331,18 @@ def mkinitramfs(
 
     if keymap_src:
         logger.info("Copying keymap to %s", keymap_dest)
-        with gzip.open(keymap_src, 'rb') as km_src, \
-                open(f'{DESTDIR}/{keymap_dest}', 'rb') as km_dest:
-            cmd = ["loadkeys", "--bkeymap"]
-            subprocess.run(cmd, check=True, stdin=km_src, stdout=km_dest)
+        gzip_cmd = ['gzip', '-kdc', keymap_src]
+        loadkeys_cmd = ['loadkeys', '--bkeymap']
+        with subprocess.Popen(gzip_cmd, stdout=subprocess.PIPE) as gzip, \
+                open(f'{DESTDIR}/{keymap_dest}', 'wb') as keymap_dest_f, \
+                subprocess.Popen(loadkeys_cmd, stdin=gzip.stdout,
+                                 stdout=keymap_dest_f) as loadkeys:
+            if loadkeys.wait() != 0:
+                raise subprocess.CalledProcessError(loadkeys.returncode,
+                                                    loadkeys.args)
+            if gzip.wait() != 0:
+                raise subprocess.CalledProcessError(gzip.returncode,
+                                                    gzip.args)
         os.chmod(f'{DESTDIR}/{keymap_dest}', 0o644)
 
     logger.info("Generatine /init")
