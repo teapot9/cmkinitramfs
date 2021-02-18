@@ -11,11 +11,12 @@ herited classes for multiple source of data.
 """
 
 import os.path
+from typing import List, Optional, Set
 
 import cmkinitramfs.util as util
 
 
-def _fun_rescue_shell():
+def _fun_rescue_shell() -> str:
     """Rescue shell
     This function takes one argument and drop the user to /bin/sh,
     the argument is the error string for the user.
@@ -30,7 +31,7 @@ def _fun_rescue_shell():
     )
 
 
-def _fun_printk():
+def _fun_printk() -> str:
     """Outputs a string to kernel log and to stderr"""
     return (
         "printk()\n"
@@ -41,7 +42,7 @@ def _fun_printk():
     )
 
 
-def _die(message):
+def _die(message: str) -> str:
     """Returns a string stopping the boot process
     This function will load a rescue shell with an error message,
     this is an abstraction for the rescue_shell function
@@ -49,7 +50,7 @@ def _die(message):
     return f"rescue_shell 'FATAL: {message}'"
 
 
-def do_header(home="/root", path="/bin:/sbin"):
+def do_header(home: str = "/root", path: str = "/bin:/sbin") -> str:
     """Create the /init header
     This will return:
       - The shebang /bin/sh
@@ -72,7 +73,7 @@ def do_header(home="/root", path="/bin:/sbin"):
     )
 
 
-def do_init():
+def do_init() -> str:
     """Initialize the init environment
     This action will:
       - Check current PID is 1
@@ -94,7 +95,7 @@ def do_init():
     )
 
 
-def do_cmdline():
+def do_cmdline() -> str:
     """Parse the kernel command line for known parameters
     Parsed parameters are:
       - rescue_shell: Immediately starts a rescue shell
@@ -111,7 +112,7 @@ def do_cmdline():
     )
 
 
-def do_keymap(keymap_file):
+def do_keymap(keymap_file: str) -> str:
     """Load the keymap
     keymap_file -- String: absolute path to the keymap file
     within the initramfs
@@ -126,7 +127,7 @@ def do_keymap(keymap_file):
     )
 
 
-def do_maintenance():
+def do_maintenance() -> str:
     """Check for maintenance
     If the MAINTENANCE variable is set, load a rescue shell
     """
@@ -137,7 +138,7 @@ def do_maintenance():
     )
 
 
-def do_switch_root(init, newroot):
+def do_switch_root(init: str, newroot: 'Data') -> str:
     """Cleanup and switch root
     This action will:
       - Set kernel log level back to default
@@ -175,18 +176,18 @@ class Data:
     _is_loaded -- bool: Data is currently loaded
     """
 
-    def __init__(self):
-        self._need = []
-        self._lneed = []
+    def __init__(self) -> None:
+        self._need: List['Data'] = []
+        self._lneed: List['Data'] = []
         self._is_final = False
         self._is_loaded = False
-        self._needed_by = []
+        self._needed_by: List['Data'] = []
 
-    def is_final(self):
+    def is_final(self) -> bool:
         """Returns a boolean indicating if the data is final"""
         return self._is_final
 
-    def set_final(self):
+    def set_final(self) -> None:
         """This function set the data object as final
         This means the data is required by the final boot environment
         and should never be unloaded (as it would be pointless).
@@ -196,17 +197,17 @@ class Data:
         for k in self._need:
             k.set_final()
 
-    def add_dep(self, dep):
+    def add_dep(self, dep: 'Data') -> None:
         """Add a Data object to the hard dependencies list"""
         self._need.append(dep)
         dep._needed_by.append(self)
 
-    def add_load_dep(self, dep):
+    def add_load_dep(self, dep: 'Data') -> None:
         """Add a Data object to the loading dependencies list"""
         self._lneed.append(dep)
         dep._needed_by.append(self)
 
-    def pre_load(self):
+    def pre_load(self) -> str:
         """This function does the preparation for loading the Data
         It loads all the needed dependencies to the system.
         It should be called before the actual loading of the Data.
@@ -223,7 +224,7 @@ class Data:
                 code += k.load()
         return code
 
-    def post_load(self):
+    def post_load(self) -> str:
         """This function does the post loading cleanup
         If the object is a loading dependency only,
         it will load everything needing it in order to be unloaded.
@@ -244,7 +245,7 @@ class Data:
                 code += k.unload()
         return code
 
-    def load(self):
+    def load(self) -> str:
         """This function is the actual loading of the Data
         It should be redefined by the herited classes,
         this definition is a no-op only loading dependencies.
@@ -257,7 +258,7 @@ class Data:
         """
         return self.pre_load() + self.post_load()
 
-    def pre_unload(self):
+    def pre_unload(self) -> str:
         """This function does the pre unloading sanity checks
         It should be called before the actual unloading of the data.
         Returns a string containing the pre-unloading script.
@@ -269,7 +270,7 @@ class Data:
             raise DataError(f"{self} is still needed or not temporary")
         return code
 
-    def post_unload(self):
+    def post_unload(self) -> str:
         """This function does the post unloading cleanup
         It removes itself from the _needed_by list of all its dependencies
         and check if the dependency can be unloaded.
@@ -285,7 +286,7 @@ class Data:
         self._is_loaded = False
         return code
 
-    def unload(self):
+    def unload(self) -> str:
         """This function does the unloading of the Data
         It should be redefined by the herited classes,
         this definition is a no-op only unloading unneeded dependencies.
@@ -297,7 +298,7 @@ class Data:
         """
         return self.pre_unload() + self.post_unload()
 
-    def path(self):
+    def path(self) -> str:
         """Get the path of this data
         This function provides a string allowing access to data from /init,
         this string can be a path or a command in a subshell (e.g.
@@ -319,14 +320,14 @@ class PathData(Data):
     filepath -- String: path of the data
     """
 
-    def __init__(self, path):
+    def __init__(self, path: str):
         super().__init__()
         self.filepath = path
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.filepath
 
-    def path(self):
+    def path(self) -> str:
         return self.filepath
 
 
@@ -337,14 +338,14 @@ class UuidData(Data):
     uuid -- String: UUID of the data
     """
 
-    def __init__(self, uuid):
+    def __init__(self, uuid: str):
         super().__init__()
         self.uuid = uuid
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "UUID=" + self.uuid
 
-    def path(self):
+    def path(self) -> str:
         return "$(findfs 'UUID=" + self.uuid + "')"
 
 
@@ -358,17 +359,18 @@ class LuksData(Data):
     header -- Data to use as header, defaults to None: not needed
     """
 
-    def __init__(self, source, name, key=None, header=None):
+    def __init__(self, source: Data, name: str,
+                 key: Optional[Data] = None, header: Optional[Data] = None):
         super().__init__()
         self.source = source
         self.name = name
         self.key = key
         self.header = header
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def load(self):
+    def load(self) -> str:
         header = f'--header "{self.header.path()}" ' if self.header else ''
         key_file = f'--key-file "{self.key.path()}" ' if self.key else ''
         return (
@@ -381,7 +383,7 @@ class LuksData(Data):
             f"{self.post_load()}"
         )
 
-    def unload(self):
+    def unload(self) -> str:
         return (
             f"{self.pre_unload()}"
             f"echo 'Closing LUKS device {self}'\n"
@@ -391,7 +393,7 @@ class LuksData(Data):
             f"{self.post_unload()}"
         )
 
-    def path(self):
+    def path(self) -> str:
         return "/dev/mapper/" + self.name
 
 
@@ -403,15 +405,15 @@ class LvmData(Data):
     lv_name -- String containing the logical volume's name
     """
 
-    def __init__(self, vg_name, lv_name):
+    def __init__(self, vg_name: str, lv_name: str):
         super().__init__()
         self.vg_name = vg_name
         self.lv_name = lv_name
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.vg_name + "/" + self.lv_name
 
-    def load(self):
+    def load(self) -> str:
         return (
             f"{self.pre_load()}"
             f"echo 'Enabling LVM logical volume {self}'\n"
@@ -424,7 +426,7 @@ class LvmData(Data):
             f"{self.post_load()}"
         )
 
-    def unload(self):
+    def unload(self) -> str:
         return (
             f"{self.pre_unload()}"
             f"echo 'Disabling LVM logical volume {self}'\n"
@@ -437,7 +439,7 @@ class LvmData(Data):
             f"{self.post_unload()}"
         )
 
-    def path(self):
+    def path(self) -> str:
         # If LV or VG name has an hyphen '-', LVM doubles it in the path
         if '-' in self.vg_name + self.lv_name:
             return "/dev/mapper/" + self.vg_name.replace('-', '--')\
@@ -454,17 +456,18 @@ class MountData(Data):
     options -- String: mount options to use, defaults to "ro"
     """
 
-    def __init__(self, source, mountpoint, filesystem, options="ro"):
+    def __init__(self, source: Data, mountpoint: str, filesystem: str,
+                 options: str = "ro"):
         super().__init__()
         self.source = source if source else PathData("none")
         self.mountpoint = mountpoint
         self.filesystem = filesystem
         self.options = options
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.mountpoint
 
-    def load(self):
+    def load(self) -> str:
         fsck = (
             "FSTAB_FILE='/dev/null' "
             f'fsck -t {self.filesystem} "{self.source.path()}" || '
@@ -491,7 +494,7 @@ class MountData(Data):
             f"{self.post_load()}"
         )
 
-    def unload(self):
+    def unload(self) -> str:
         return (
             f"{self.pre_unload()}"
             f"echo 'Unmounting filesystem {self}'\n"
@@ -501,7 +504,7 @@ class MountData(Data):
             f"{self.post_unload()}"
         )
 
-    def path(self):
+    def path(self) -> str:
         return self.mountpoint
 
 
@@ -513,17 +516,17 @@ class MdData(Data):
     name -- Name to use for the RAID
     """
 
-    def __init__(self, sources, name):
+    def __init__(self, sources: List[Data], name: str):
         super().__init__()
         self.sources = sources
         self.name = name
         if not self.sources:
             raise DataError(f"{self} has no source defined")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def load(self):
+    def load(self) -> str:
         # Get the string containing all sources to use
         sources_string = ""
         for source in self.sources:
@@ -541,7 +544,7 @@ class MdData(Data):
             f"{self.post_load()}"
         )
 
-    def unload(self):
+    def unload(self) -> str:
         return (
             f"{self.pre_unload()}"
             f"echo 'Stopping MD RAID {self}'\n"
@@ -552,7 +555,7 @@ class MdData(Data):
             f"{self.post_unload()}"
         )
 
-    def path(self):
+    def path(self) -> str:
         return "/dev/md/" + self.name
 
 
@@ -564,15 +567,15 @@ class CloneData(Data):
     dest -- Data object: destination directory
     """
 
-    def __init__(self, source, dest):
+    def __init__(self, source: Data, dest: Data):
         super().__init__()
         self.source = source
         self.dest = dest
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.source} to {self.dest}"
 
-    def load(self):
+    def load(self) -> str:
         return (
             f"{self.pre_load()}"
             f"echo 'Cloning {self}'\n"
@@ -582,15 +585,16 @@ class CloneData(Data):
             f"{self.post_load()}"
         )
 
-    def path(self):
+    def path(self) -> str:
         return self.dest.path()
 
 
-def mkinit(root, mounts=None, keymap_src=None, keymap_dest=None,
-           init='/sbin/init'):
+def mkinit(root: Data, mounts: Optional[Set[Data]] = None,
+           keymap_src: str = '', keymap_dest: str = '',
+           init: str = '/sbin/init') -> str:
     """Create the init script"""
     if mounts is None:
-        mounts = []
+        mounts = set()
 
     script = [do_header(), do_init(), do_cmdline()]
     if keymap_src is not None:
@@ -604,10 +608,11 @@ def mkinit(root, mounts=None, keymap_src=None, keymap_dest=None,
     return ''.join(script)
 
 
-def entry_point():
+def entry_point() -> None:
     """Main entry point of the module"""
-    args = ('root', 'mounts', 'keymap_src', 'keymap_dest', 'init')
     config = util.read_config()
     print(mkinit(
-        **{arg: config[arg] for arg in args if config.get(arg) is not None},
+        root=config['root'], mounts=config['mounts'],
+        keymap_src=config['keymap_src'], keymap_dest=config['keymap_dest'],
+        init=config['init']
     ))

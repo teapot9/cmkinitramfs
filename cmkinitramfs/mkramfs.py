@@ -18,6 +18,7 @@ import shutil
 import stat
 import subprocess
 import sys
+from typing import BinaryIO, Iterator, List, Optional, Set
 
 import cmkinitramfs.mkinit as mkinit
 import cmkinitramfs.util as util
@@ -27,7 +28,7 @@ DESTDIR = "/tmp/initramfs"
 QUIET = False
 
 
-def mklayout(debug=False):
+def mklayout(debug: bool = False) -> None:
     """Create the base layout for initramfs
     debug -- bool: Run in debug mode, do not create nodes (allows to be run as
       a non root user)
@@ -61,7 +62,7 @@ def mklayout(debug=False):
     os.mknod(f"{DESTDIR}/dev/null", 0o666 | stat.S_IFCHR, os.makedev(1, 3))
 
 
-def copyfile(src, dest=None, deps=True):
+def copyfile(src: str, dest: Optional[str] = None, deps: bool = True) -> None:
     """Copy a file to the initramfs
     If the file is a symlink, it is dereferenced
     If the file is an ELF file, its dependencies are also copied
@@ -104,7 +105,7 @@ def copyfile(src, dest=None, deps=True):
     shutil.copy(src, dest, follow_symlinks=True)
 
 
-def findlib(lib):
+def findlib(lib: str) -> str:
     """Search a library in the system
     Uses /etc/ld.so.conf, /etc/ld.so.conf.d/*.conf and LD_LIBRARY_PATH
     LD_LIBRARY_PATH contain libdirs separated by ':'
@@ -117,12 +118,10 @@ def findlib(lib):
 
     # Get list of directories to search
     libdirs = []
-    try:
-        for k in os.environ.get('LD_LIBRARY_PATH').split(':'):
+    if os.environ.get('LD_LIBRARY_PATH') is not None:
+        for k in os.environ['LD_LIBRARY_PATH'].split(':'):
             if k:
                 libdirs.append(k)
-    except AttributeError:
-        pass
 
     # List files in /etc/ld.so.conf and /etc/ld.so.conf.d/*.conf
     dirlists = glob.glob("/etc/ld.so.conf") \
@@ -142,7 +141,7 @@ def findlib(lib):
     raise FileNotFoundError(lib)
 
 
-def findexec(executable):
+def findexec(executable: str) -> str:
     """Search an executable within PATH environment variable"""
 
     if os.path.isfile(executable):
@@ -150,12 +149,10 @@ def findexec(executable):
 
     # Get set of directories to search
     execdirs = set()
-    try:
-        for k in os.environ.get('PATH').split(':'):
+    if os.environ.get('PATH') is not None:
+        for k in os.environ['PATH'].split(':'):
             if k:
                 execdirs.add(k)
-    except AttributeError:
-        pass
 
     # Parse directories
     for execdir in execdirs:
@@ -164,7 +161,7 @@ def findexec(executable):
     raise FileNotFoundError(executable)
 
 
-def find_elf_deps(src):
+def find_elf_deps(src: str) -> Iterator[str]:
     """Find ELF dependencies
     Yields nothing if not an ELF file
     src -- String: elf file path
@@ -173,6 +170,7 @@ def find_elf_deps(src):
     src = os.path.abspath(src)
     cmd = ["lddtree", "--list", "--skip-non-elfs", src]
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
+        assert proc.stdout is not None
         for line in proc.stdout:
             fname = os.path.abspath(line.decode().strip())
             if fname != src:
@@ -180,19 +178,21 @@ def find_elf_deps(src):
         if proc.wait() != 0:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
-def install_busybox():
+
+def install_busybox() -> None:
     """Create busybox symlinks"""
 
     busybox = findexec("busybox")
     cmd = ['busybox', '--list-full']
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
+        assert proc.stdout is not None
         for line in proc.stdout:
             copyfile(busybox, '/' + line.decode().strip(), deps=False)
         if proc.wait() != 0:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
 
-def mkcpio(dest):
+def mkcpio(dest: BinaryIO) -> None:
     """Create CPIO archive from initramfs
     dest -- File object into which the cpio archive will be writen
     """
@@ -209,13 +209,13 @@ def mkcpio(dest):
     os.chdir(oldpwd)
 
 
-def cleanup():
+def cleanup() -> None:
     """Cleanup DESTDIR"""
     if os.path.exists(DESTDIR):
         shutil.rmtree(DESTDIR)
 
 
-def hash_file(filepath, chunk_size=65536):
+def hash_file(filepath: str, chunk_size: int = 65536) -> bytes:
     """Calculate SHA512 of a given file
     filepath -- String: path of the file to hash
     chunk_size -- Number of bytes per chunk of file to hash
@@ -228,7 +228,7 @@ def hash_file(filepath, chunk_size=65536):
     return sha512.digest()
 
 
-def find_duplicates():
+def find_duplicates() -> Iterator[List[str]]:
     """Generates tuples of duplicated files in DESTDIR"""
     # files_dic: Dictionnary, keys are sha512 hash, value is a list
     # of files sharing this hash
@@ -244,7 +244,7 @@ def find_duplicates():
             yield files_dic[key]
 
 
-def hardlink_duplicates():
+def hardlink_duplicates() -> None:
     """Hardlink all duplicated files in DESTDIR"""
     for duplicates in find_duplicates():
         logger.info("Hardlinking duplicates %s",
@@ -256,12 +256,17 @@ def hardlink_duplicates():
 
 
 def mkinitramfs(
-        init_str,
-        data_types=None, filesystems=None, user_files=None,
-        keymap_src=None, keymap_dest='/root/keymap.bmap',
-        output='/usr/src/initramfs.cpio', kernel='linux',
-        force_cleanup=False, debug=False,
-        ):
+        init_str: str,
+        data_types: Optional[Set[str]] = None,
+        filesystems: Optional[Set[str]] = None,
+        user_files: Optional[Set[str]] = None,
+        keymap_src: Optional[str] = None,
+        keymap_dest: str = '/root/keymap.bmap',
+        output: str = '/usr/src/initramfs.cpio',
+        kernel: str = 'linux',
+        force_cleanup: bool = False,
+        debug: bool = False,
+        ) -> None:
     """Create the initramfs"""
     if data_types is None:
         logger.warning("No data types selected")
@@ -357,12 +362,10 @@ def mkinitramfs(
     if not debug:
         logger.info("Building CPIO archive")
         if output == "-":
-            sys.stdout.mode = 'wb'
             mkcpio(sys.stdout.buffer)
-            sys.stdout.mode = 'w'
         else:
-            with open(output, 'wb') as dest:
-                mkcpio(dest)
+            with open(output, 'wb') as cpiodest:
+                mkcpio(cpiodest)
 
         logger.info("Cleaning up temporary files")
         cleanup()
@@ -381,11 +384,11 @@ def mkinitramfs(
                                 "/boot/initramfs.cpio.xz.old")
             with open('/usr/src/initramfs.cpio', 'rb') as cpio,  \
                     lzma.open('/boot/initramfs.cpio.xz', 'wb',
-                              format=FORMAT_XZ) as cpioxz:
+                              format=lzma.FORMAT_XZ) as cpioxz:
                 shutil.copyfileobj(cpio, cpioxz)
 
 
-def _find_config_file():
+def _find_config_file() -> Optional[str]:
     """Find a configuration file to use"""
     if os.environ.get('CMKINITCFG'):
         return os.environ['CMKINITCFG']
@@ -396,7 +399,7 @@ def _find_config_file():
     return None
 
 
-def entry_point():
+def entry_point() -> None:
     """Main entry point"""
     parser = argparse.ArgumentParser(description="Build an initramfs.")
     parser.add_argument(
@@ -435,21 +438,20 @@ def entry_point():
         level = logging.WARNING
     logging.getLogger().setLevel(level)
 
-    ramfs_args = ('data_types', 'filesystems', 'user_files', 'keymap_src',
-                  'keymap_dest')
-    init_args = ('root', 'mounts', 'keymap_src', 'keymap_dest', 'init')
     config = util.read_config()
     mkinitramfs(
         # init_str
-        mkinit.mkinit(**{
-            arg: config[arg] for arg in init_args
-            if config.get(arg) is not None
-        }),
+        mkinit.mkinit(
+            root=config['root'], mounts=config['mounts'],
+            keymap_src=config['keymap_src'], keymap_dest=config['keymap_dest'],
+            init=config['init']
+        ),
         # args from config
-        **{
-            arg: config[arg] for arg in ramfs_args
-            if config.get(arg) is not None
-        },
+        data_types=config['data_types'],
+        filesystems=config['filesystems'],
+        user_files=config['user_files'],
+        keymap_src=config['keymap_src'],
+        keymap_dest=config['keymap_dest'],
         # args from cmdline
         output=args.output,
         kernel=args.kernel,

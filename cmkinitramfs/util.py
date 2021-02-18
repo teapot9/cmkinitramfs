@@ -3,13 +3,14 @@
 import configparser
 import logging
 import os
+from typing import Optional, Set, TypedDict
 
 import cmkinitramfs.mkinit as mkinit
 
 logger = logging.getLogger(__name__)
 
 
-def _find_config_file():
+def _find_config_file() -> Optional[str]:
     """Find a configuration file to use"""
     if os.environ.get('CMKINITCFG'):
         return os.environ['CMKINITCFG']
@@ -20,13 +21,23 @@ def _find_config_file():
     return None
 
 
-def read_config(config_file=_find_config_file()):
-    """Read a configuration file and generate data structures from it"""
-    def find_data(data_str):
-        """Find a Data object from a data string"""
-        if data_str is None:
-            return None
+class Config(TypedDict):
+    root: 'mkinit.Data'
+    mounts: Set['mkinit.Data']
+    keymap_src: str
+    keymap_dest: str
+    init: str
+    build_dir: str
+    user_files: Set[str]
+    data_types: Set[str]
+    filesystems: Set[str]
 
+
+def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
+    """Read a configuration file and generate data structures from it"""
+
+    def find_data(data_str: str) -> 'mkinit.Data':
+        """Find a Data object from a data string"""
         if data_str[:5] == 'UUID=':
             if data_dic.get(data_str[5:]) is None:
                 data_dic[data_str[5:]] = mkinit.UuidData(data_str[5:])
@@ -39,16 +50,11 @@ def read_config(config_file=_find_config_file()):
             return data_dic[data_str[5:]]
         return data_dic[data_str]
 
-    # Dictionnary returned by this function
-    ret_dic = {
-        'root': None,
-        'mounts': set(),
-        'keymap_src': None,
-        'keymap_dest': None,
-        'init': None,
-        'build_dir': None,
-        'user_files': set(),
-    }
+    def find_data_opt(data_str: Optional[str]) -> Optional['mkinit.Data']:
+        """find_data, returns None if data_str is None"""
+        if data_str is not None:
+            return find_data(data_str)
+        return None
 
     # Read config file
     config = configparser.ConfigParser()
@@ -57,15 +63,15 @@ def read_config(config_file=_find_config_file()):
     config.read(config_file)
 
     # Get all data sources in data_dic
-    data_dic = {}
+    data_dic: dict[str, 'mkinit.Data'] = {}
     for data_id in config.sections():
         data_config = config[data_id]
         if data_config['type'] == 'luks':
             data_dic[data_id] = mkinit.LuksData(
                 find_data(data_config['source']),
                 data_config['name'],
-                find_data(data_config.get('key')),
-                find_data(data_config.get('header')),
+                find_data_opt(data_config.get('key')),
+                find_data_opt(data_config.get('header')),
             )
         elif data_config['type'] == 'lvm':
             data_dic[data_id] = mkinit.LvmData(
@@ -101,8 +107,8 @@ def read_config(config_file=_find_config_file()):
                 data.add_load_dep(find_data(ldep.strip()))
 
     data_types = set()
-    for data in [k for k in config if k != "DEFAULT"]:
-        data_types.add(config[data]["type"])
+    for data_str in [k for k in config if k != "DEFAULT"]:
+        data_types.add(config[data_str]["type"])
 
     filesystems = set()
     for mount in [k for k in config if k != "DEFAULT"
@@ -110,7 +116,7 @@ def read_config(config_file=_find_config_file()):
         filesystems.add(config[mount]["filesystem"])
 
     # Create dictionnary to return
-    ret_dic = {
+    ret_dic: Config = {
         'root': find_data(config['DEFAULT']['root']),
         'mounts': set(
             find_data(k.strip())
