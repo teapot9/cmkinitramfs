@@ -72,6 +72,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
                 data_config['name'],
                 find_data_opt(data_config.get('key')),
                 find_data_opt(data_config.get('header')),
+                data_config.getboolean('discard', fallback=False),
             )
         elif data_config['type'] == 'lvm':
             data_dic[data_id] = mkinit.LvmData(

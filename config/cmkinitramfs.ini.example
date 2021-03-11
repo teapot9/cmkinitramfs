@@ -50,6 +50,7 @@ load-need = luks-key
 source = UUID=xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
 name = luks
 key = luks-key
+discard = yes
 
 [lvm-root]
 type = lvm

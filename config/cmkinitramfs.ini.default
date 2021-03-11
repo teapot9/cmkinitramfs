@@ -79,6 +79,10 @@ mountpoints =
 # file (e.g. PATH=/path/to/my/header)
 #header = 
 
+# Optionnal: Enable discard
+# Boolean set to yes/no or true/false
+#discard = 
+
 
 # LVM data source definition:
 # [lvm-name]

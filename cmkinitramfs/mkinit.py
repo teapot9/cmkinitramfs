@@ -357,15 +357,18 @@ class LuksData(Data):
     name -- String: name used by LUKS for the device
     key -- Data to use as key, defaults to None: no key file
     header -- Data to use as header, defaults to None: not needed
+    discard -- Enable discards
     """
 
     def __init__(self, source: Data, name: str,
-                 key: Optional[Data] = None, header: Optional[Data] = None):
+                 key: Optional[Data] = None, header: Optional[Data] = None,
+                 discard: bool = False):
         super().__init__()
         self.source = source
         self.name = name
         self.key = key
         self.header = header
+        self.discard = discard
 
     def __str__(self) -> str:
         return self.name
@@ -373,10 +376,11 @@ class LuksData(Data):
     def load(self) -> str:
         header = f'--header "{self.header.path()}" ' if self.header else ''
         key_file = f'--key-file "{self.key.path()}" ' if self.key else ''
+        discard = f'--allow-discards ' if self.discard else ''
         return (
             f"{self.pre_load()}"
             f"echo 'Unlocking LUKS device {self}'\n"
-            f"cryptsetup luksOpen {header}{key_file}"
+            f"cryptsetup luksOpen {header}{key_file}{discard}"
             f"\"{self.source.path()}\" '{self.name}' || "
             f"{_die(f'Failed to unlock LUKS device {self}')}\n"
             "\n"
