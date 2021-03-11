@@ -376,7 +376,7 @@ class LuksData(Data):
     def load(self) -> str:
         header = f'--header "{self.header.path()}" ' if self.header else ''
         key_file = f'--key-file "{self.key.path()}" ' if self.key else ''
-        discard = f'--allow-discards ' if self.discard else ''
+        discard = '--allow-discards ' if self.discard else ''
         return (
             f"{self.pre_load()}"
             f"echo 'Unlocking LUKS device {self}'\n"

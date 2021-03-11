@@ -263,7 +263,6 @@ def mkinitramfs(
         keymap_src: Optional[str] = None,
         keymap_dest: str = '/root/keymap.bmap',
         output: str = '/usr/src/initramfs.cpio',
-        kernel: str = 'linux',
         force_cleanup: bool = False,
         debug: bool = False,
         ) -> None:
@@ -370,13 +369,6 @@ def mkinitramfs(
         logger.info("Cleaning up temporary files")
         cleanup()
 
-        # Cleanup kernel's initramfs
-        if kernel != "none":
-            logger.info("Cleaning up kernel %s", kernel)
-            rm = glob.glob(f"/usr/src/{kernel}/usr/initramfs_data.cpio*")
-            for fname in rm:
-                os.remove(fname)
-
         if not output:
             logger.info("Installing initramfs to /boot")
             if os.path.isfile("/boot/initramfs.cpio.xz"):
@@ -415,10 +407,6 @@ def entry_point() -> None:
         help="Overwrite temporary directory if it exists"
     )
     parser.add_argument(
-        "kernel", type=str, nargs='?', default='linux',
-        help="Select kernel version to cleanup rather than /usr/src/linux"
-    )
-    parser.add_argument(
         '--verbose', '-v', action='store_true', default=False,
         help="Be verbose",
     )
@@ -454,7 +442,6 @@ def entry_point() -> None:
         keymap_dest=config['keymap_dest'],
         # args from cmdline
         output=args.output,
-        kernel=args.kernel,
         force_cleanup=args.clean,
         debug=args.debug,
     )
