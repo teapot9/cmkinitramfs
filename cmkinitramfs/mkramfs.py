@@ -257,9 +257,9 @@ def hardlink_duplicates() -> None:
 
 def mkinitramfs(
         init_str: str,
-        data_types: Optional[Set[str]] = None,
-        filesystems: Optional[Set[str]] = None,
-        user_files: Optional[Set[str]] = None,
+        files: Optional[Set[str]] = None,
+        execs: Optional[Set[str]] = None,
+        libs: Optional[Set[str]] = None,
         keymap_src: Optional[str] = None,
         keymap_dest: str = '/root/keymap.bmap',
         output: str = '/usr/src/initramfs.cpio',
@@ -267,15 +267,13 @@ def mkinitramfs(
         debug: bool = False,
         ) -> None:
     """Create the initramfs"""
-    if data_types is None:
-        logger.warning("No data types selected")
-        data_types = set()
-    if filesystems is None:
-        logger.warning("No filesystem selected")
-        filesystems = set()
-    if user_files is None:
-        logger.info("No user file selected")
-        user_files = set()
+
+    if files is None:
+        files = set()
+    if execs is None:
+        execs = set()
+    if libs is None:
+        libs = set()
 
     # Cleanup and initialization
     if force_cleanup:
@@ -284,56 +282,24 @@ def mkinitramfs(
     logger.info("Building initramfs")
     mklayout(debug=debug)
 
-    # Copy user files
-    for filepath in user_files:
-        logger.info("Copying %s to /root", filepath)
-        copyfile(filepath)
-
     # Busybox
     logger.info("Installing busybox")
     copyfile(findexec('busybox'))
     install_busybox()
 
-    # Files for data types and filesystems
+    # Copy files, execs, libs
+    for src, dest in files:
+        logger.info("Copying file %s to %s", src, dest)
+        copyfile(src, dest)
+    for src, dest in execs:
+        logger.info("Copying executable %s to %s", src, dest)
+        copyfile(findexec(src), dest)
+    for src, dest in libs:
+        logger.info("Copying library %s to %s", src, dest)
+        copyfile(findlib(src), dest)
 
-    if "luks" in data_types:
-        logger.info("Installing LUKS utils")
-        copyfile(findexec("cryptsetup"))
-        copyfile(findlib("libgcc_s.so.1"))
-
-    if "lvm" in data_types:
-        logger.info("Installing LVM utils")
-        copyfile(findexec("lvm"))
-
-    if "md" in data_types:
-        logger.info("Installing MD utils")
-        copyfile(findexec("mdadm"))
-
-    if "btrfs" in filesystems:
-        logger.info("Installing BTRFS utils")
-        copyfile(findexec("btrfs"))
-        copyfile(findexec("fsck.btrfs"))
-
-    if "ext4" in filesystems:
-        logger.info("Installing EXT4 utils")
-        copyfile(findexec("fsck.ext4"))
-        copyfile(findexec("e2fsck"))
-
-    if "xfs" in filesystems:
-        logger.info("Installing XFS utils")
-        copyfile(findexec("fsck.xfs"))
-        copyfile(findexec("xfs_repair"))
-
-    if "fat" in filesystems or "vfat" in filesystems:
-        logger.info("Installing FAT utils")
-        copyfile(findexec("fsck.fat"))
-        copyfile(findexec("fsck.vfat"))
-
-    if "f2fs" in filesystems:
-        logger.info("Installing F2FS utils")
-        copyfile(findexec("fsck.f2fs"))
-
-    if keymap_src:
+    # Copy keymap
+    if keymap_src is not None:
         logger.info("Copying keymap to %s", keymap_dest)
         gzip_cmd = ['gzip', '-kdc', keymap_src]
         loadkeys_cmd = ['loadkeys', '--bkeymap']
@@ -349,7 +315,7 @@ def mkinitramfs(
                                                     gzip.args)
         os.chmod(f'{DESTDIR}/{keymap_dest}', 0o644)
 
-    logger.info("Generatine /init")
+    logger.info("Generating /init")
     with open(f'{DESTDIR}/init', 'wt') as dest:
         dest.write(init_str)
     os.chmod(f'{DESTDIR}/init', 0o755)
@@ -378,17 +344,6 @@ def mkinitramfs(
                     lzma.open('/boot/initramfs.cpio.xz', 'wb',
                               format=lzma.FORMAT_XZ) as cpioxz:
                 shutil.copyfileobj(cpio, cpioxz)
-
-
-def _find_config_file() -> Optional[str]:
-    """Find a configuration file to use"""
-    if os.environ.get('CMKINITCFG'):
-        return os.environ['CMKINITCFG']
-    if os.path.isfile('./cmkinitramfs.ini'):
-        return './cmkinitramfs.ini'
-    if os.path.isfile('/etc/cmkinitramfs.ini'):
-        return '/etc/cmkinitramfs.ini'
-    return None
 
 
 def entry_point() -> None:
@@ -435,9 +390,9 @@ def entry_point() -> None:
             init=config['init']
         ),
         # args from config
-        data_types=config['data_types'],
-        filesystems=config['filesystems'],
-        user_files=config['user_files'],
+        files=config['files'],
+        execs=config['execs'],
+        libs=config['libs'],
         keymap_src=config['keymap_src'],
         keymap_dest=config['keymap_dest'],
         # args from cmdline

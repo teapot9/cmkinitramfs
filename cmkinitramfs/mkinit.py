@@ -170,6 +170,9 @@ class Data:
     boot environment (e.g. rootfs).
 
     Private attributes:
+    files -- Set of strings: files needed in the initramfs
+    execs -- Set of strings: executables needed in the initramfs
+    libs -- Set of strings: libraries needed in the initramfs
     _need -- List of Data objects needed
     _lneed -- List of Data objects needed for load (those objects
       can be unloaded once the current object is loaded)
@@ -179,11 +182,32 @@ class Data:
     """
 
     def __init__(self) -> None:
+        self.files: Set[Tuple[str, Optional[str]]] = set()
+        self.execs: Set[Tuple[str, Optional[str]]] = set()
+        self.libs: Set[Tuple[str, Optional[str]]] = set()
         self._need: List['Data'] = []
         self._lneed: List['Data'] = []
         self._is_final = False
         self._is_loaded = False
         self._needed_by: List['Data'] = []
+
+    def deps_files(self) -> Set[str]:
+        "Recursivelly get a set of files needed in the initramfs"
+        return self.files.union(
+            *(k.deps_files() for k in self._need + self._lneed)
+        )
+
+    def deps_execs(self) -> Set[str]:
+        "Recursivelly get a set of executables needed in the initramfs"
+        return self.execs.union(
+            *(k.deps_execs() for k in self._need + self._lneed)
+        )
+
+    def deps_libs(self) -> Set[str]:
+        "Recursivelly get a set of libraries needed in the initramfs"
+        return self.libs.union(
+            *(k.deps_libs() for k in self._need + self._lneed)
+        )
 
     def is_final(self) -> bool:
         """Returns a boolean indicating if the data is final"""
@@ -300,7 +324,7 @@ class Data:
         """
         return self.pre_unload() + self.post_unload()
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Get the name of the data
         This string may be quoted with simple quotes in the script.
         This **has** to be implemented by subclasses.
@@ -375,6 +399,8 @@ class LuksData(Data):
                  key: Optional[Data] = None, header: Optional[Data] = None,
                  discard: bool = False):
         super().__init__()
+        self.execs.add(('cryptsetup', None))
+        self.libs.add(('libgcc_s.so.1', None))
         self.source = source
         self.name = name
         self.key = key
@@ -422,6 +448,7 @@ class LvmData(Data):
 
     def __init__(self, vg_name: str, lv_name: str):
         super().__init__()
+        self.execs.add(('lvm', None))
         self.vg_name = vg_name
         self.lv_name = lv_name
 
@@ -476,6 +503,22 @@ class MountData(Data):
         self.mountpoint = mountpoint
         self.filesystem = filesystem
         self.options = options
+        if self.filesystem in ('btrfs',):
+            self.execs.add(('btrfs', None))
+            self.execs.add(('fsck.btrfs', None))
+        elif self.filesystem in ('ext4',):
+            self.execs.add(('fsck.ext4', None))
+            self.execs.add(('e2fsck', None))
+        elif self.filesystem in ('xfs',):
+            self.execs.add(('fsck.xfs', None))
+            self.execs.add(('xfs_repair', None))
+        elif self.filesystem in ('fat', 'vfat'):
+            self.execs.add(('fsck.fat', None))
+            self.execs.add(('fsck.vfat', None))
+        elif self.filesystem in ('exfat',):
+            self.execs.add(('fsck.exfat', None))
+        elif self.filesystem in ('f2fs',):
+            self.execs.add(('fsck.f2fs', None))
 
     def __str__(self) -> str:
         return self.mountpoint
@@ -531,6 +574,7 @@ class MdData(Data):
 
     def __init__(self, sources: List[Data], name: str):
         super().__init__()
+        self.execs.add(('mdadm', None))
         self.sources = sources
         self.name = name
         if not self.sources:

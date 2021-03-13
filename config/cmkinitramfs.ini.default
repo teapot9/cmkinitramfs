@@ -38,11 +38,26 @@ mountpoints =
 # Defaults to /sbin/init
 #init = /sbin/init
 
-# Optional: Add files to initramfs, filepaths are separated by ':'
-# This should be set if any source requires external files
-# Files are copied to /root
+# Optional: Add files to initramfs, each item is separated by a newline
+# Format: source:destination (e.g. "files = /root/foo:/root/bar").
+# If there is no destination specified, the file will be copied to
+# the same path in the initramfs.
+# Source file can be an absolute or relative path, destination must be
+# an absolute path within the initramfs.
 #files = 
 
+# Optional: Add executables to initramfs, same format as `files`
+# Source file will also be searched in directories from the PATH
+# environment variable.
+#execs = 
+
+# Optional: Add libraries to initramfs, same format as `files`
+# Source file will also be searched in directories from
+# /etc/ld.so.conf, /etc/ld.so.conf.d/*.conf, and the LD_LIBRARY_PATH
+# environment variable.
+#libs = 
+
+#
 # LUKS data source definition:
 #[luks-name]
 

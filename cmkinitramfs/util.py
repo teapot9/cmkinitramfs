@@ -3,7 +3,7 @@
 import configparser
 import logging
 import os
-from typing import Optional, Set, TypedDict
+from typing import Dict, Optional, Set, TypedDict
 
 import cmkinitramfs.mkinit as mkinit
 
@@ -28,9 +28,9 @@ class Config(TypedDict):
     keymap_dest: str
     init: str
     build_dir: str
-    user_files: Set[str]
-    data_types: Set[str]
-    filesystems: Set[str]
+    files: Set[str]
+    execs: Set[str]
+    libs: Set[str]
 
 
 def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
@@ -63,7 +63,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     config.read(config_file)
 
     # Get all data sources in data_dic
-    data_dic: dict[str, 'mkinit.Data'] = {}
+    data_dic: Dict[str, 'mkinit.Data'] = {}
     for data_id in config.sections():
         data_config = config[data_id]
         if data_config['type'] == 'luks':
@@ -107,34 +107,45 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
             if ldep.strip():
                 data.add_load_dep(find_data(ldep.strip()))
 
-    data_types = set()
-    for data_str in [k for k in config if k != "DEFAULT"]:
-        data_types.add(config[data_str]["type"])
+    # Define Data for root and for other mounts
+    root = find_data(config['DEFAULT']['root'])
+    mounts = set(
+        find_data(k.strip())
+        for k in config['DEFAULT']['mountpoints'].strip().split(',')
+    )
 
-    filesystems = set()
-    for mount in [k for k in config if k != "DEFAULT"
-                  and config[k]["type"] == "mount"]:
-        filesystems.add(config[mount]["filesystem"])
+    # Define needed files, execs and libs
+    files = root.deps_files().union(*(k.deps_files() for k in mounts))
+    for line in config['DEFAULT'].get('files', '').split('\n'):
+        if line:
+            src, *dest = line.split(':')
+            dest = dest[0] if len(dest) else None
+            files.add((src, dest))
+    execs = root.deps_execs().union(*(k.deps_execs() for k in mounts))
+    for line in config['DEFAULT'].get('execs', '').split('\n'):
+        if line:
+            src, *dest = line.split(':')
+            dest = dest[0] if len(dest) else None
+            execs.add((src, dest))
+    libs = root.deps_libs().union(*(k.deps_libs() for k in mounts))
+    for line in config['DEFAULT'].get('libs', '').split('\n'):
+        if line:
+            src, *dest = line.split(':')
+            dest = dest[0] if len(dest) else None
+            libs.add((src, dest))
 
     # Create dictionnary to return
     ret_dic: Config = {
-        'root': find_data(config['DEFAULT']['root']),
-        'mounts': set(
-            find_data(k.strip())
-            for k in config['DEFAULT']['mountpoints'].strip().split(',')
-        ),
+        'root': root,
+        'mounts': mounts,
         'keymap_src': config['DEFAULT'].get('keymap'),
         'keymap_dest': config['DEFAULT'].get('keymap-file',
                                              '/root/keymap.bmap'),
-        'init': config['DEFAULT'].get('init', '/sbin.init'),
+        'init': config['DEFAULT'].get('init', '/sbin/init'),
         'build_dir': config["DEFAULT"].get("build-dir"),
-        'user_files': set(
-            config['DEFAULT']['files'].strip().split(':')
-            if config['DEFAULT'].get('files') is not None
-            else ()
-        ),
-        'data_types': data_types,
-        'filesystems': filesystems,
+        'files': files,
+        'execs': execs,
+        'libs': libs,
     }
 
     # Configure final data sources
