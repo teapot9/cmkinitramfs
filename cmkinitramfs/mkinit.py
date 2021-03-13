@@ -11,6 +11,7 @@ herited classes for multiple source of data.
 """
 
 import os.path
+from shlex import quote
 from typing import List, Optional, Set
 
 import cmkinitramfs.util as util
@@ -44,10 +45,11 @@ def _fun_printk() -> str:
 
 def _die(message: str) -> str:
     """Returns a string stopping the boot process
+    The string will be single quoted and escaped.
     This function will load a rescue shell with an error message,
     this is an abstraction for the rescue_shell function
     """
-    return f"rescue_shell 'FATAL: {message}'"
+    return f"rescue_shell {quote(f'FATAL: {message}')}"
 
 
 def do_header(home: str = "/root", path: str = "/bin:/sbin") -> str:
@@ -61,9 +63,9 @@ def do_header(home: str = "/root", path: str = "/bin:/sbin") -> str:
     return (
         "#!/bin/sh\n"
         "\n"
-        f"HOME='{home}'\n"
+        f"HOME={quote(home)}\n"
         "export HOME\n"
-        f"PATH='{path}'\n"
+        f"PATH={quote(path)}\n"
         "export PATH\n"
         "\n"
         f"{_fun_rescue_shell()}\n"
@@ -83,7 +85,7 @@ def do_init() -> str:
     return (
         "echo 'Initialization'\n"
         "test $$ -eq 1 || "
-        f"{_die('init expects to be run as PID 1, current PID is $$')}\n"
+        f"{_die('init expects to be run as PID 1')}\n"
         "mount -t proc none /proc || "
         f"{_die('Failed to mount /proc')}\n"
         "mount -t sysfs none /sys || "
@@ -119,9 +121,9 @@ def do_keymap(keymap_file: str) -> str:
     """
     return (
         "echo 'Loading keymap'\n"
-        f"[ -f '{keymap_file}' ] || "
+        f"[ -f {quote(keymap_file)} ] || "
         f"{_die(f'Failed to load keymap, file {keymap_file} not found')}\n"
-        f"loadkmap <'{keymap_file}' || "
+        f"loadkmap <{quote(keymap_file)} || "
         f"{_die(f'Failed to load keymap {keymap_file}')}\n"
         "\n"
     )
@@ -149,13 +151,13 @@ def do_switch_root(init: str, newroot: 'Data') -> str:
     """
     return (
         f"printk 'Run {init} as init process'\n"
-        "awk '{ print $4 }' '/proc/sys/kernel/printk' "
-        "1>'/proc/sys/kernel/printk'\n"
+        "verb=\"$(awk '{ print $4 }' /proc/sys/kernel/printk)\"\n"
+        'echo "${verb}" >/proc/sys/kernel/printk\n'
         f"umount /dev || {_die('Failed to unmount /dev')}\n"
         f"umount /proc || {_die('Failed to unmount /proc')}\n"
         f"umount /sys || {_die('Failed to unmount /sys')}\n"
         "echo 'INITRAMFS: End'\n"
-        f"exec switch_root \"{newroot.path()}\" '{init}'\n"
+        f"exec switch_root {newroot.path()} {quote(init)}\n"
     )
 
 
@@ -298,11 +300,20 @@ class Data:
         """
         return self.pre_unload() + self.post_unload()
 
+    def __str__(self):
+        """Get the name of the data
+        This string may be quoted with simple quotes in the script.
+        This **has** to be implemented by subclasses.
+        """
+        raise NotImplementedError()
+
     def path(self) -> str:
         """Get the path of this data
         This function provides a string allowing access to data from /init,
         this string can be a path or a command in a subshell (e.g.
-        $(findfs UUID=foobar)).
+        "$(findfs UUID=foobar)").
+        This string should be ready to be used in the script without
+        being quoted nor escaped.
         This **has** to be implemented by subclasses.
         """
         raise NotImplementedError()
@@ -328,7 +339,7 @@ class PathData(Data):
         return self.filepath
 
     def path(self) -> str:
-        return self.filepath
+        return quote(self.filepath)
 
 
 class UuidData(Data):
@@ -346,7 +357,7 @@ class UuidData(Data):
         return "UUID=" + self.uuid
 
     def path(self) -> str:
-        return "$(findfs 'UUID=" + self.uuid + "')"
+        return '"$(findfs ' + quote('UUID=' + self.uuid) + ')"'
 
 
 class LuksData(Data):
@@ -374,14 +385,14 @@ class LuksData(Data):
         return self.name
 
     def load(self) -> str:
-        header = f'--header "{self.header.path()}" ' if self.header else ''
-        key_file = f'--key-file "{self.key.path()}" ' if self.key else ''
+        header = f'--header {self.header.path()} ' if self.header else ''
+        key_file = f'--key-file {self.key.path()} ' if self.key else ''
         discard = '--allow-discards ' if self.discard else ''
         return (
             f"{self.pre_load()}"
             f"echo 'Unlocking LUKS device {self}'\n"
-            f"cryptsetup luksOpen {header}{key_file}{discard}"
-            f"\"{self.source.path()}\" '{self.name}' || "
+            f"cryptsetup {header}{key_file}{discard}"
+            f"open {self.source.path()} {quote(self.name)} || "
             f"{_die(f'Failed to unlock LUKS device {self}')}\n"
             "\n"
             f"{self.post_load()}"
@@ -391,14 +402,14 @@ class LuksData(Data):
         return (
             f"{self.pre_unload()}"
             f"echo 'Closing LUKS device {self}'\n"
-            f"cryptsetup luksClose '{self.name}' || "
+            f"cryptsetup close {quote(self.name)} || "
             f"{_die(f'Failed to close LUKS device {self}')}\n"
             "\n"
             f"{self.post_unload()}"
         )
 
     def path(self) -> str:
-        return "/dev/mapper/" + self.name
+        return quote('/dev/mapper/' + self.name)
 
 
 class LvmData(Data):
@@ -422,7 +433,7 @@ class LvmData(Data):
             f"{self.pre_load()}"
             f"echo 'Enabling LVM logical volume {self}'\n"
             "lvm lvchange --sysinit -a ly "
-            f"'{self.vg_name}/{self.lv_name}' || "
+            f"{quote(f'{self.vg_name}/{self.lv_name}')} || "
             f"{_die(f'Failed to enable LVM logical volume {self}')}\n"
             "lvm vgscan --mknodes || "
             f"{_die(f'Failed to create LVM nodes for {self}')}\n"
@@ -435,7 +446,7 @@ class LvmData(Data):
             f"{self.pre_unload()}"
             f"echo 'Disabling LVM logical volume {self}'\n"
             "lvm lvchange --sysinit -a ln "
-            f"'{self.vg_name}/{self.lv_name}' || "
+            f"{quote(f'{self.vg_name}/{self.lv_name}')} || "
             f"{_die(f'Failed to disable LVM logical volume {self}')}\n"
             "lvm vgscan --mknodes || "
             f"{_die(f'Failed to remove LVM nodes for {self}')}\n"
@@ -445,10 +456,8 @@ class LvmData(Data):
 
     def path(self) -> str:
         # If LV or VG name has an hyphen '-', LVM doubles it in the path
-        if '-' in self.vg_name + self.lv_name:
-            return "/dev/mapper/" + self.vg_name.replace('-', '--')\
-                   + "-" + self.lv_name.replace('-', '--')
-        return "/dev/mapper/" + self.vg_name + "-" + self.lv_name
+        return quote('/dev/mapper/' + self.vg_name.replace('-', '--')
+                     + '-' + self.lv_name.replace('-', '--'))
 
 
 class MountData(Data):
@@ -473,15 +482,15 @@ class MountData(Data):
 
     def load(self) -> str:
         fsck = (
-            "FSTAB_FILE='/dev/null' "
-            f'fsck -t {self.filesystem} "{self.source.path()}" || '
+            "FSTAB_FILE=/dev/null "
+            f'fsck -t {quote(self.filesystem)} {self.source.path()} || '
             f"{_die(f'Failed to check filesystem {self}')}\n"
             if self.source.path() != 'none'
             else ''
         )
         mkdir = (
-            f"[ -d '{self.mountpoint}' ] || "
-            f"mkdir '{self.mountpoint}' || "
+            f"[ -d {quote(self.mountpoint)} ] || "
+            f"mkdir {quote(self.mountpoint)} || "
             f"{_die(f'Failed to create directory {self}')}\n"
             if os.path.dirname(self.mountpoint) == '/mnt'
             else ''
@@ -491,8 +500,8 @@ class MountData(Data):
             f"echo 'Mounting filesystem {self}'\n"
             f"{fsck}"
             f"{mkdir}"
-            f"mount -t {self.filesystem} -o '{self.options}' "
-            f"\"{self.source.path()}\" '{self.mountpoint}' || "
+            f"mount -t {quote(self.filesystem)} -o {quote(self.options)} "
+            f"{self.source.path()} {quote(self.mountpoint)} || "
             f"{_die(f'Failed to mount filesystem {self}')}\n"
             "\n"
             f"{self.post_load()}"
@@ -502,14 +511,14 @@ class MountData(Data):
         return (
             f"{self.pre_unload()}"
             f"echo 'Unmounting filesystem {self}'\n"
-            f"umount '{self.mountpoint}' || "
+            f"umount {quote(self.mountpoint)} || "
             f"{_die(f'Failed to unmount filesystem {self}')}\n"
             "\n"
             f"{self.post_unload()}"
         )
 
     def path(self) -> str:
-        return self.mountpoint
+        return quote(self.mountpoint)
 
 
 class MdData(Data):
@@ -535,14 +544,14 @@ class MdData(Data):
         sources_string = ""
         for source in self.sources:
             if isinstance(source, UuidData):
-                sources_string += f"--uuid \"{source.uuid}\" "
+                sources_string += f"--uuid {quote(source.uuid)} "
             else:
-                sources_string += f"\"{source.path()}\" "
+                sources_string += f"{source.path()} "
         return (
             f"{self.pre_load()}"
             f"echo 'Assembling MD RAID {self}'\n"
             "MDADM_NO_UDEV=1 "
-            f"mdadm --assemble {sources_string}'{self.name}' || "
+            f"mdadm --assemble {sources_string}{quote(self.name)} || "
             f"{_die(f'Failed to assemble MD RAID {self}')}\n"
             "\n"
             f"{self.post_load()}"
@@ -553,14 +562,14 @@ class MdData(Data):
             f"{self.pre_unload()}"
             f"echo 'Stopping MD RAID {self}'\n"
             "MDADM_NO_UDEV=1 "
-            f"mdadm --stop '{self.name}' || "
+            f"mdadm --stop {quote(self.name)} || "
             f"{_die(f'Failed to stop MD RAID {self}')}\n"
             "\n"
             f"{self.post_unload()}"
         )
 
     def path(self) -> str:
-        return "/dev/md/" + self.name
+        return quote('/dev/md/' + self.name)
 
 
 class CloneData(Data):
@@ -583,7 +592,7 @@ class CloneData(Data):
         return (
             f"{self.pre_load()}"
             f"echo 'Cloning {self}'\n"
-            f"cp -aT \"{self.source.path()}\" \"{self.dest.path()}\" || "
+            f"cp -aT {self.source.path()} {self.dest.path()} || "
             f"{_die(f'Failed to clone {self}')}\n"
             "\n"
             f"{self.post_load()}"
