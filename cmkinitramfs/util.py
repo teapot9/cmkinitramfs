@@ -3,7 +3,7 @@
 import configparser
 import logging
 import os
-from typing import Dict, Optional, Set, TypedDict
+from typing import Dict, Optional, Set, Tuple, TypedDict
 
 import cmkinitramfs.mkinit as mkinit
 
@@ -28,9 +28,9 @@ class Config(TypedDict):
     keymap_dest: str
     init: str
     build_dir: str
-    files: Set[str]
-    execs: Set[str]
-    libs: Set[str]
+    files: Set[Tuple[str, Optional[str]]]
+    execs: Set[Tuple[str, Optional[str]]]
+    libs: Set[Tuple[str, Optional[str]]]
 
 
 def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
@@ -119,20 +119,17 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     for line in config['DEFAULT'].get('files', '').split('\n'):
         if line:
             src, *dest = line.split(':')
-            dest = dest[0] if len(dest) else None
-            files.add((src, dest))
+            files.add((src, dest[0] if dest else None))
     execs = root.deps_execs().union(*(k.deps_execs() for k in mounts))
     for line in config['DEFAULT'].get('execs', '').split('\n'):
         if line:
             src, *dest = line.split(':')
-            dest = dest[0] if len(dest) else None
-            execs.add((src, dest))
+            execs.add((src, dest[0] if dest else None))
     libs = root.deps_libs().union(*(k.deps_libs() for k in mounts))
     for line in config['DEFAULT'].get('libs', '').split('\n'):
         if line:
             src, *dest = line.split(':')
-            dest = dest[0] if len(dest) else None
-            libs.add((src, dest))
+            libs.add((src, dest[0] if dest else None))
 
     # Create dictionnary to return
     ret_dic: Config = {

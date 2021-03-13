@@ -12,7 +12,7 @@ herited classes for multiple source of data.
 
 import os.path
 from shlex import quote
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 import cmkinitramfs.util as util
 
@@ -191,19 +191,19 @@ class Data:
         self._is_loaded = False
         self._needed_by: List['Data'] = []
 
-    def deps_files(self) -> Set[str]:
+    def deps_files(self) -> Set[Tuple[str, Optional[str]]]:
         "Recursivelly get a set of files needed in the initramfs"
         return self.files.union(
             *(k.deps_files() for k in self._need + self._lneed)
         )
 
-    def deps_execs(self) -> Set[str]:
+    def deps_execs(self) -> Set[Tuple[str, Optional[str]]]:
         "Recursivelly get a set of executables needed in the initramfs"
         return self.execs.union(
             *(k.deps_execs() for k in self._need + self._lneed)
         )
 
-    def deps_libs(self) -> Set[str]:
+    def deps_libs(self) -> Set[Tuple[str, Optional[str]]]:
         "Recursivelly get a set of libraries needed in the initramfs"
         return self.libs.union(
             *(k.deps_libs() for k in self._need + self._lneed)

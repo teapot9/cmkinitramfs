@@ -18,7 +18,7 @@ import shutil
 import stat
 import subprocess
 import sys
-from typing import BinaryIO, Iterator, List, Optional, Set
+from typing import BinaryIO, Iterator, List, Optional, Set, Tuple
 
 import cmkinitramfs.mkinit as mkinit
 import cmkinitramfs.util as util
@@ -257,9 +257,9 @@ def hardlink_duplicates() -> None:
 
 def mkinitramfs(
         init_str: str,
-        files: Optional[Set[str]] = None,
-        execs: Optional[Set[str]] = None,
-        libs: Optional[Set[str]] = None,
+        files: Optional[Set[Tuple[str, Optional[str]]]] = None,
+        execs: Optional[Set[Tuple[str, Optional[str]]]] = None,
+        libs: Optional[Set[Tuple[str, Optional[str]]]] = None,
         keymap_src: Optional[str] = None,
         keymap_dest: str = '/root/keymap.bmap',
         output: str = '/usr/src/initramfs.cpio',
@@ -288,15 +288,15 @@ def mkinitramfs(
     install_busybox()
 
     # Copy files, execs, libs
-    for src, dest in files:
-        logger.info("Copying file %s to %s", src, dest)
-        copyfile(src, dest)
-    for src, dest in execs:
-        logger.info("Copying executable %s to %s", src, dest)
-        copyfile(findexec(src), dest)
-    for src, dest in libs:
-        logger.info("Copying library %s to %s", src, dest)
-        copyfile(findlib(src), dest)
+    for fsrc, fdest in files:
+        logger.info("Copying file %s to %s", fsrc, fdest)
+        copyfile(fsrc, fdest)
+    for fsrc, fdest in execs:
+        logger.info("Copying executable %s to %s", fsrc, fdest)
+        copyfile(findexec(fsrc), fdest)
+    for fsrc, fdest in libs:
+        logger.info("Copying library %s to %s", fsrc, fdest)
+        copyfile(findlib(fsrc), fdest)
 
     # Copy keymap
     if keymap_src is not None:
