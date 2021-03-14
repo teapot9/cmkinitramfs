@@ -12,7 +12,6 @@ import collections
 import glob
 import hashlib
 import logging
-import lzma
 import os
 import shutil
 import stat
@@ -24,8 +23,7 @@ import cmkinitramfs.mkinit as mkinit
 import cmkinitramfs.util as util
 
 logger = logging.getLogger(__name__)
-DESTDIR = "/tmp/initramfs"
-QUIET = False
+DESTDIR = '/tmp/initramfs'
 
 
 def mklayout(debug: bool = False) -> None:
@@ -35,6 +33,7 @@ def mklayout(debug: bool = False) -> None:
     Some necessary devices are also created
     This function will fail if DESTDIR exists
     """
+    logger.debug("Creating initramfs layout in %s", DESTDIR)
 
     os.makedirs(DESTDIR, mode=0o755, exist_ok=False)
 
@@ -62,7 +61,8 @@ def mklayout(debug: bool = False) -> None:
     os.mknod(f"{DESTDIR}/dev/null", 0o666 | stat.S_IFCHR, os.makedev(1, 3))
 
 
-def copyfile(src: str, dest: Optional[str] = None, deps: bool = True) -> None:
+def copyfile(src: str, dest: Optional[str] = None,
+             deps: bool = True, conflict_ignore: bool = False) -> None:
     """Copy a file to the initramfs
     If the file is a symlink, it is dereferenced
     If the file is an ELF file, its dependencies are also copied
@@ -82,10 +82,10 @@ def copyfile(src: str, dest: Optional[str] = None, deps: bool = True) -> None:
         dest = src
     # Strip /usr directory, not needed in initramfs
     if "/usr/local/" in dest:
-        logger.info("Stripping /usr/local/ from %s", dest)
+        logger.debug("Stripping /usr/local/ from %s", dest)
         dest = dest.replace("/usr/local", "/")
     elif "/usr/" in dest:
-        logger.info("Stripping /usr/ from %s", dest)
+        logger.debug("Stripping /usr/ from %s", dest)
         dest = dest.replace("/usr/", "/")
     # Check destination base directory exists (e.g. /bin)
     if os.path.dirname(dest) != "/" \
@@ -94,13 +94,17 @@ def copyfile(src: str, dest: Optional[str] = None, deps: bool = True) -> None:
     dest = DESTDIR + dest
 
     if os.path.exists(dest):
-        return
+        if conflict_ignore or hash_file(src) == hash_file(dest):
+            logger.debug("File %s has already been copied to %s", src, dest)
+            return
+        raise FileExistsError(f"Cannot copy {src} to {dest}")
 
     # Copy dependencies
     if deps:
         for dep in find_elf_deps(src):
             copyfile(dep)
 
+    logger.debug("Copying %s to %s", src, dest)
     os.makedirs(os.path.dirname(dest), mode=0o755, exist_ok=True)
     shutil.copy(src, dest, follow_symlinks=True)
 
@@ -112,6 +116,7 @@ def findlib(lib: str) -> str:
     /etc/ld.so.conf and /etc/ld.so.conf.d/*.conf contains
     one directory per line
     """
+    logger.debug("Searching library %s", lib)
 
     if os.path.isfile(lib):
         return lib
@@ -143,6 +148,7 @@ def findlib(lib: str) -> str:
 
 def findexec(executable: str) -> str:
     """Search an executable within PATH environment variable"""
+    logger.debug("Searching executable %s", executable)
 
     if os.path.isfile(executable):
         return executable
@@ -167,6 +173,7 @@ def find_elf_deps(src: str) -> Iterator[str]:
     src -- String: elf file path
     """
     logger.debug("Parsing ELF deps for %s", src)
+
     src = os.path.abspath(src)
     cmd = ["lddtree", "--list", "--skip-non-elfs", src]
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
@@ -179,15 +186,13 @@ def find_elf_deps(src: str) -> Iterator[str]:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
 
-def install_busybox() -> None:
-    """Create busybox symlinks"""
-
-    busybox = findexec("busybox")
-    cmd = ['busybox', '--list-full']
+def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
+    "Iterates over busybox applets"
+    cmd = [busybox_exec, '--list-full']
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
         assert proc.stdout is not None
         for line in proc.stdout:
-            copyfile(busybox, '/' + line.decode().strip(), deps=False)
+            yield '/' + line.decode().strip()
         if proc.wait() != 0:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
@@ -196,11 +201,13 @@ def mkcpio(dest: BinaryIO) -> None:
     """Create CPIO archive from initramfs
     dest -- File object into which the cpio archive will be writen
     """
+    logger.debug("Creating CPIO archive")
+
     oldpwd = os.getcwd()
     os.chdir(DESTDIR)
     cmd = ["find", ".", "-print0"]
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as find:
-        cmd = ['cpio', '--null', '--create', '--format=newc']
+        cmd = ['cpio', '--quiet', '--null', '--create', '--format=newc']
         with subprocess.Popen(cmd, stdin=find.stdout, stdout=dest) as cpio:
             if cpio.wait() != 0:
                 raise subprocess.CalledProcessError(cpio.returncode, cpio.args)
@@ -211,6 +218,7 @@ def mkcpio(dest: BinaryIO) -> None:
 
 def cleanup() -> None:
     """Cleanup DESTDIR"""
+    logger.debug("Cleaning up %s", DESTDIR)
     if os.path.exists(DESTDIR):
         shutil.rmtree(DESTDIR)
 
@@ -247,8 +255,8 @@ def find_duplicates() -> Iterator[List[str]]:
 def hardlink_duplicates() -> None:
     """Hardlink all duplicated files in DESTDIR"""
     for duplicates in find_duplicates():
-        logger.info("Hardlinking duplicates %s",
-                    [k.replace(DESTDIR, '') for k in duplicates])
+        logger.debug("Hardlinking duplicates %s",
+                     [k.replace(DESTDIR, '') for k in duplicates])
         source = duplicates.pop()
         for duplicate in duplicates:
             os.remove(duplicate)
@@ -261,8 +269,8 @@ def mkinitramfs(
         execs: Optional[Set[Tuple[str, Optional[str]]]] = None,
         libs: Optional[Set[Tuple[str, Optional[str]]]] = None,
         keymap_src: Optional[str] = None,
-        keymap_dest: str = '/root/keymap.bmap',
-        output: str = '/usr/src/initramfs.cpio',
+        keymap_dest: Optional[str] = None,
+        output: Optional[str] = None,
         force_cleanup: bool = False,
         debug: bool = False,
         ) -> None:
@@ -274,33 +282,38 @@ def mkinitramfs(
         execs = set()
     if libs is None:
         libs = set()
+    if keymap_dest is None:
+        keymap_dest = '/root/keymap.bmap'
+    if output is None:
+        output = '/usr/src/initramfs.cpio'
 
     # Cleanup and initialization
     if force_cleanup:
         logger.warning("Overwriting temporary directory %s", DESTDIR)
         cleanup()
-    logger.info("Building initramfs")
+    logger.info("Building initramfs in %s", DESTDIR)
     mklayout(debug=debug)
 
-    # Busybox
-    logger.info("Installing busybox")
-    copyfile(findexec('busybox'))
-    install_busybox()
+    # /init
+    logger.info("Generating /init")
+    with open(f'{DESTDIR}/init', 'wt') as dest:
+        dest.write(init_str)
+    os.chmod(f'{DESTDIR}/init', 0o755)
 
     # Copy files, execs, libs
+    logger.info("Copying files %s", [k[0] for k in files])
     for fsrc, fdest in files:
-        logger.info("Copying file %s to %s", fsrc, fdest)
         copyfile(fsrc, fdest)
+    logger.info("Copying executables %s", [k[0] for k in execs])
     for fsrc, fdest in execs:
-        logger.info("Copying executable %s to %s", fsrc, fdest)
         copyfile(findexec(fsrc), fdest)
+    logger.info("Copying libraries %s", [k[0] for k in libs])
     for fsrc, fdest in libs:
-        logger.info("Copying library %s to %s", fsrc, fdest)
         copyfile(findlib(fsrc), fdest)
 
     # Copy keymap
     if keymap_src is not None:
-        logger.info("Copying keymap to %s", keymap_dest)
+        logger.info("Copying keymap %s to %s", keymap_src, keymap_dest)
         gzip_cmd = ['gzip', '-kdc', keymap_src]
         loadkeys_cmd = ['loadkeys', '--bkeymap']
         with subprocess.Popen(gzip_cmd, stdout=subprocess.PIPE) as gzip, \
@@ -315,35 +328,29 @@ def mkinitramfs(
                                                     gzip.args)
         os.chmod(f'{DESTDIR}/{keymap_dest}', 0o644)
 
-    logger.info("Generating /init")
-    with open(f'{DESTDIR}/init', 'wt') as dest:
-        dest.write(init_str)
-    os.chmod(f'{DESTDIR}/init', 0o755)
+    # Busybox
+    logger.info("Installing busybox")
+    busybox = findexec('busybox')
+    copyfile(busybox)
+    for applet in busybox_get_applets(busybox):
+        copyfile(busybox, applet, deps=False, conflict_ignore=True)
 
-    logger.info("Hardlinking duplicated files")
+    # Hardlink duplicate files
+    logger.info("Hardlinking duplicates")
     hardlink_duplicates()
 
     # Create initramfs
-    if not debug:
-        logger.info("Building CPIO archive")
-        if output == "-":
-            mkcpio(sys.stdout.buffer)
-        else:
-            with open(output, 'wb') as cpiodest:
-                mkcpio(cpiodest)
+    logger.info("Building CPIO archive %s", output)
+    if output == "-":
+        mkcpio(sys.stdout.buffer)
+    else:
+        with open(output, 'wb') as cpiodest:
+            mkcpio(cpiodest)
+        logger.debug("%s bytes copied", os.path.getsize(output))
 
+    if not debug:
         logger.info("Cleaning up temporary files")
         cleanup()
-
-        if not output:
-            logger.info("Installing initramfs to /boot")
-            if os.path.isfile("/boot/initramfs.cpio.xz"):
-                shutil.copyfile("/boot/initramfs.cpio.xz",
-                                "/boot/initramfs.cpio.xz.old")
-            with open('/usr/src/initramfs.cpio', 'rb') as cpio,  \
-                    lzma.open('/boot/initramfs.cpio.xz', 'wb',
-                              format=lzma.FORMAT_XZ) as cpioxz:
-                shutil.copyfileobj(cpio, cpioxz)
 
 
 def entry_point() -> None:
@@ -351,42 +358,49 @@ def entry_point() -> None:
     parser = argparse.ArgumentParser(description="Build an initramfs.")
     parser.add_argument(
         "--debug", "-d", action="store_true", default=False,
-        help="Enable debugging mode: non root and does not create final archive"
+        help="debugging mode: non-root, does not cleanup the build directory"
     )
     parser.add_argument(
-        "--output", "-o", type=str, default='/usr/src/initramfs.cpio',
-        help="Set output cpio file and disable writing to /boot"
+        "--output", "-o", type=str, default=None,
+        help="set output cpio file"
     )
     parser.add_argument(
         "--clean", "-C", action="store_true", default=False,
-        help="Overwrite temporary directory if it exists"
+        help="overwrite temporary directory if it exists"
     )
     parser.add_argument(
         '--verbose', '-v', action='store_true', default=False,
-        help="Be verbose",
+        help="be verbose",
     )
     parser.add_argument(
-        '--quiet', '-q', action='store_true', default=False,
-        help="Only show errors",
+        '--quiet', '-q', action='count', default=0,
+        help="be quiet (can be repeated)",
     )
     args = parser.parse_args()
 
-    if args.debug:
+    if args.verbose:
         level = logging.DEBUG
-    elif args.verbose:
-        level = logging.INFO
-    elif args.quiet:
+    elif args.quiet >= 3:
+        level = logging.CRITICAL
+    elif args.quiet >= 2:
         level = logging.ERROR
-    else:
+    elif args.quiet >= 1:
         level = logging.WARNING
+    else:
+        level = logging.INFO
     logging.getLogger().setLevel(level)
 
     config = util.read_config()
+    if config['build_dir'] is not None:
+        global DESTDIR
+        DESTDIR = config['build_dir']
     mkinitramfs(
         # init_str
         mkinit.mkinit(
             root=config['root'], mounts=config['mounts'],
-            keymap_src=config['keymap_src'], keymap_dest=config['keymap_dest'],
+            keymap=(None if config['keymap_src'] is None
+                    else '' if config['keymap_dest'] is None
+                    else config['keymap_dest']),
             init=config['init']
         ),
         # args from config
@@ -396,7 +410,7 @@ def entry_point() -> None:
         keymap_src=config['keymap_src'],
         keymap_dest=config['keymap_dest'],
         # args from cmdline
-        output=args.output,
+        output=(args.output if args.output is not None else config['output']),
         force_cleanup=args.clean,
         debug=args.debug,
     )

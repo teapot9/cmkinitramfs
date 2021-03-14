@@ -21,19 +21,21 @@ def _find_config_file() -> Optional[str]:
     return None
 
 
-class Config(TypedDict):
+class _Config(TypedDict):
+    """Typing for the configuration dictionnary"""
     root: 'mkinit.Data'
     mounts: Set['mkinit.Data']
-    keymap_src: str
-    keymap_dest: str
-    init: str
-    build_dir: str
+    keymap_src: Optional[str]
+    keymap_dest: Optional[str]
+    init: Optional[str]
+    build_dir: Optional[str]
     files: Set[Tuple[str, Optional[str]]]
     execs: Set[Tuple[str, Optional[str]]]
     libs: Set[Tuple[str, Optional[str]]]
+    output: Optional[str]
 
 
-def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
+def read_config(config_file: Optional[str] = _find_config_file()) -> _Config:
     """Read a configuration file and generate data structures from it"""
 
     def find_data(data_str: str) -> 'mkinit.Data':
@@ -132,17 +134,17 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
             libs.add((src, dest[0] if dest else None))
 
     # Create dictionnary to return
-    ret_dic: Config = {
+    ret_dic: _Config = {
         'root': root,
         'mounts': mounts,
         'keymap_src': config['DEFAULT'].get('keymap'),
-        'keymap_dest': config['DEFAULT'].get('keymap-file',
-                                             '/root/keymap.bmap'),
-        'init': config['DEFAULT'].get('init', '/sbin/init'),
-        'build_dir': config["DEFAULT"].get("build-dir"),
+        'keymap_dest': config['DEFAULT'].get('keymap-file'),
+        'init': config['DEFAULT'].get('init'),
+        'build_dir': config["DEFAULT"].get('build-dir'),
         'files': files,
         'execs': execs,
         'libs': libs,
+        'output': config['DEFAULT'].get('output'),
     }
 
     # Configure final data sources

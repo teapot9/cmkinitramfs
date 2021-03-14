@@ -14,7 +14,7 @@ import os.path
 from shlex import quote
 from typing import List, Optional, Set, Tuple
 
-import cmkinitramfs.util as util
+from cmkinitramfs.util import read_config
 
 
 def _fun_rescue_shell() -> str:
@@ -345,7 +345,6 @@ class Data:
 
 class DataError(Exception):
     """Error in the Data object"""
-    pass
 
 
 class PathData(Data):
@@ -647,16 +646,17 @@ class CloneData(Data):
 
 
 def mkinit(root: Data, mounts: Optional[Set[Data]] = None,
-           keymap_src: str = '', keymap_dest: str = '',
-           init: str = '/sbin/init') -> str:
+           keymap: Optional[str] = None, init: Optional[str] = None) -> str:
     """Create the init script"""
     if mounts is None:
         mounts = set()
+    if init is None:
+        init = '/sbin/init'
 
     script = [do_header(), do_init(), do_cmdline()]
-    if keymap_src:
+    if keymap is not None:
         script.append(do_keymap(
-            keymap_dest if keymap_dest else '/root/keymap.bmap'
+            keymap if keymap else '/root/keymap.bmap'
         ))
     script.append(root.load())
     script.append(do_maintenance())
@@ -668,9 +668,11 @@ def mkinit(root: Data, mounts: Optional[Set[Data]] = None,
 
 def entry_point() -> None:
     """Main entry point of the module"""
-    config = util.read_config()
+    config = read_config()
     print(mkinit(
         root=config['root'], mounts=config['mounts'],
-        keymap_src=config['keymap_src'], keymap_dest=config['keymap_dest'],
+        keymap=(None if config['keymap_src'] is None
+                else '' if config['keymap_dest'] is None
+                else config['keymap_dest']),
         init=config['init']
     ))

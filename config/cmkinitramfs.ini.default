@@ -16,6 +16,9 @@
 # Optionnal: Override the directory used to build the initramfs.
 #build-dir = /tmp/initramfs
 
+# Optionnal: Configure the output file of the CPIO archive
+#output = /usr/src/initramfs.cpio
+
 # Select the data source to use as root, this configuration is required
 # This is the name of the data source, the name of a data source is determined
 # by the name of the section it is configured in (e.g. [data-source-name],
