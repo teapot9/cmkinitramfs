@@ -21,22 +21,40 @@ def _find_config_file() -> Optional[str]:
     return None
 
 
-class _Config(TypedDict):
+class Config(TypedDict):
     """Typing for the configuration dictionnary"""
+    #: rootfs data needed to boot
     root: 'mkinit.Data'
+    #: non-rootfs datas needed to boot
     mounts: Set['mkinit.Data']
+    #: Keymap path on the system
     keymap_src: Optional[str]
+    #: Keymap path in the initramfs
     keymap_dest: Optional[str]
+    #: Init path to launch at the end of the init script (``switch_root``)
     init: Optional[str]
+    #: Directory to use for :data:`cmkinitramfs.mkramfs.DESTDIR`
     build_dir: Optional[str]
+    #: User configured files, see :meth:`cmkinitramfs.mkinit.Data.deps_files`
     files: Set[Tuple[str, Optional[str]]]
+    #: User configured executables,
+    #: see :meth:`cmkinitramfs.mkinit.Data.deps_files`
     execs: Set[Tuple[str, Optional[str]]]
+    #: User configured libraries,
+    #: see :meth:`cmkinitramfs.mkinit.Data.deps_files`
     libs: Set[Tuple[str, Optional[str]]]
+    #: Output file for the initramfs CPIO archive
     output: Optional[str]
 
 
-def read_config(config_file: Optional[str] = _find_config_file()) -> _Config:
-    """Read a configuration file and generate data structures from it"""
+def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
+    """Read a configuration file and generate data structures from it
+
+    :param config_file: Configuration file to use. Defaults to, in order:
+        ``CMKINITCFG`` environment variable, ``./cmkinitramfs.ini``,
+        ``/etc/cmkinitramfs.ini``.
+    :return: Configuration dictionnary, described by :class:`Config`
+    """
 
     def find_data(data_str: str) -> 'mkinit.Data':
         """Find a Data object from a data string"""
@@ -134,7 +152,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> _Config:
             libs.add((src, dest[0] if dest else None))
 
     # Create dictionnary to return
-    ret_dic: _Config = {
+    ret_dic: Config = {
         'root': root,
         'mounts': mounts,
         'keymap_src': config['DEFAULT'].get('keymap'),

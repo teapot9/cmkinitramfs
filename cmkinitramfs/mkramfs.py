@@ -1,10 +1,12 @@
-"""Initramfs functions
-This module provides function to build the initramfs. It uses a temporary
-directory which it should be the only one to access.
+"""Library providing functions to build an initramfs
 
-Global variables:
-DESTDIR -- Defines the directory in which the initramfs will be built,
-  defaults to /tmp/initramfs.
+This library provides essential tools to build an initramfs, for instance
+:func:`mklayout` and :func:`mkcpio`.
+It also provides utilities like :func:`copyfile` and :func:`findexec`.
+Multiple helper functions are also available (e.g. :func:`find_elf_deps` to
+list libraries needed by an ELF executable).
+
+The main function is :func:`mkinitramfs` to build the complete initramfs.
 """
 
 import argparse
@@ -23,15 +25,19 @@ import cmkinitramfs.mkinit as mkinit
 import cmkinitramfs.util as util
 
 logger = logging.getLogger(__name__)
+#: Temporary build directory for the initramfs
 DESTDIR = '/tmp/initramfs'
 
 
 def mklayout(debug: bool = False) -> None:
-    """Create the base layout for initramfs
-    debug -- bool: Run in debug mode, do not create nodes (allows to be run as
-      a non root user)
-    Some necessary devices are also created
-    This function will fail if DESTDIR exists
+    """Create the base layout of the initramfs
+
+    The :data:`DESTDIR` directory should not exist when calling this function.
+
+    :param debug: Run in non-root mode: does not create special files
+        (e.g. ``/dev/console``, ``/dev/tty``). This option is only present
+        for debugging purposes. Those files are required for a working
+        initramfs.
     """
     logger.debug("Creating initramfs layout in %s", DESTDIR)
 
@@ -64,12 +70,17 @@ def mklayout(debug: bool = False) -> None:
 def copyfile(src: str, dest: Optional[str] = None,
              deps: bool = True, conflict_ignore: bool = False) -> None:
     """Copy a file to the initramfs
-    If the file is a symlink, it is dereferenced
-    If the file is an ELF file, its dependencies are also copied
-    src -- String: source, an absolute or relative path
-    dest -- String: destination's absolute path without DESTDIR,
-      default is the same as source (e.g. /root/file)
-    deps -- Bool: copy dependencies (for ELF)
+
+    If the file is a symlink, it is dereferenced.
+    If it is a dynamically linked ELF file, its dependencies
+    are also copied.
+
+    :param src: Absolute or relative path of the source file
+    :param dest: Absolute path of the destination, relative to the
+        initramfs root, defaults to ``src``
+    :param deps: Copy dependencies if ELF
+    :raises FileNotFoundError: Source file not found
+    :raises FileExistsError: Destination file exists and is different
     """
 
     # Sanity checks
@@ -111,10 +122,13 @@ def copyfile(src: str, dest: Optional[str] = None,
 
 def findlib(lib: str) -> str:
     """Search a library in the system
-    Uses /etc/ld.so.conf, /etc/ld.so.conf.d/*.conf and LD_LIBRARY_PATH
-    LD_LIBRARY_PATH contain libdirs separated by ':'
-    /etc/ld.so.conf and /etc/ld.so.conf.d/*.conf contains
-    one directory per line
+
+    Uses ``/etc/ld.so.conf``, ``/etc/ld.so.conf.d/*.conf``
+    and the ``LD_LIBRARY_PATH`` environment variable.
+
+    :param lib: Library to search
+    :return: Absolute path of the library
+    :raises FileNotFoundError: Library not found
     """
     logger.debug("Searching library %s", lib)
 
@@ -147,7 +161,14 @@ def findlib(lib: str) -> str:
 
 
 def findexec(executable: str) -> str:
-    """Search an executable within PATH environment variable"""
+    """Search an executable in the system
+
+    Uses the ``PATH`` environment variable.
+
+    :param executable: Executable to search
+    :return: Absolute path of the executable
+    :raises FileNotFoundError: Executable not found
+    """
     logger.debug("Searching executable %s", executable)
 
     if os.path.isfile(executable):
@@ -168,9 +189,14 @@ def findexec(executable: str) -> str:
 
 
 def find_elf_deps(src: str) -> Iterator[str]:
-    """Find ELF dependencies
-    Yields nothing if not an ELF file
-    src -- String: elf file path
+    """Find dependencies of an ELF file
+
+    If the file is not an ELF file or has no dependency,
+    nothing is yielded. This will not cause any error.
+
+    :param src: File to find dependencies for
+    :return: Iterator of absolute paths of the dependencies
+    :raises subprocess.CalledProcessError: Error during ``lddtree``
     """
     logger.debug("Parsing ELF deps for %s", src)
 
@@ -187,7 +213,12 @@ def find_elf_deps(src: str) -> Iterator[str]:
 
 
 def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
-    "Iterates over busybox applets"
+    """Get BusyBox applets
+
+    :param busybox_exec: BusyBox executable (e.g. ``busybox``)
+    :return: Iterator of absolute paths of BusyBox applets
+    :raises subprocess.CalledProcessError: Error during ``busybox_exec``
+    """
     cmd = [busybox_exec, '--list-full']
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
         assert proc.stdout is not None
@@ -198,8 +229,10 @@ def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
 
 
 def mkcpio(dest: BinaryIO) -> None:
-    """Create CPIO archive from initramfs
-    dest -- File object into which the cpio archive will be writen
+    """Create CPIO archive from the :data:`DESTDIR` directory
+
+    :param dest: Destination stream of the CPIO data
+    :raises subprocess.CalledProcessError: Error during ``find`` or ``cpio``
     """
     logger.debug("Creating CPIO archive")
 
@@ -217,17 +250,21 @@ def mkcpio(dest: BinaryIO) -> None:
 
 
 def cleanup() -> None:
-    """Cleanup DESTDIR"""
+    """Cleanup :data:`DESTDIR`
+
+    Warning: the :data:`DESTDIR` directory is *recursively deleted*.
+    """
     logger.debug("Cleaning up %s", DESTDIR)
     if os.path.exists(DESTDIR):
         shutil.rmtree(DESTDIR)
 
 
 def hash_file(filepath: str, chunk_size: int = 65536) -> bytes:
-    """Calculate SHA512 of a given file
-    filepath -- String: path of the file to hash
-    chunk_size -- Number of bytes per chunk of file to hash
-    Return the hash in a byte object
+    """Calculate the SHA512 of a file
+
+    :param filepath: Path of the file to hash
+    :param chunk_size: Number of bytes per chunk of file to hash
+    :return: File hash in a :class:`bytes` object
     """
     sha512 = hashlib.sha512()
     with open(filepath, 'rb') as src:
@@ -237,7 +274,11 @@ def hash_file(filepath: str, chunk_size: int = 65536) -> bytes:
 
 
 def find_duplicates() -> Iterator[List[str]]:
-    """Generates tuples of duplicated files in DESTDIR"""
+    """Find duplicated files in :data:`DESTDIR`
+
+    :return: Iterator of lists with the absolute path of identical files,
+        relative to current system root
+    """
     # files_dic: Dictionnary, keys are sha512 hash, value is a list
     # of files sharing this hash
     files_dic = collections.defaultdict(list)
@@ -253,7 +294,7 @@ def find_duplicates() -> Iterator[List[str]]:
 
 
 def hardlink_duplicates() -> None:
-    """Hardlink all duplicated files in DESTDIR"""
+    """Hardlink all duplicated files in :data:`DESTDIR`"""
     for duplicates in find_duplicates():
         logger.debug("Hardlinking duplicates %s",
                      [k.replace(DESTDIR, '') for k in duplicates])
@@ -274,7 +315,33 @@ def mkinitramfs(
         force_cleanup: bool = False,
         debug: bool = False,
         ) -> None:
-    """Create the initramfs"""
+    """Creates the initramfs
+
+    :param init_str: Init script (can be obtained from
+        :func:`cmkinitramfs.mkinit.mkinit`).
+    :param files: Files to add to the initramfs, each tuple is in the format
+        ``(src, dest)``. ``src`` is the path on the current system, ``dest``
+        is the path within the initramfs. This is the same format as
+        described in :meth:`cmkinitramfs.mkinit.Data.deps_files`.
+    :param execs: Executables to add to the initramfs. ``src`` can be the
+        base name, it will be searched on the system with :func:`findexec`.
+        Same format as :meth:`cmkinitramfs.mkinit.Data.deps_files`.
+    :param libs: Libraries to add to the initramfs. ``src`` can be the
+        base name, it will be searched on the system with :func:`findlib`.
+        Same format as :meth:`cmkinitramfs.mkinit.Data.deps_files`.
+    :param keymap_src: Path of the keymap to use on the system, :data:`None`
+        will not add any keymap.
+    :param keymap_dest: Path of the keymap within the initramfs,
+        defaults to ``/root/keymap.bmap``.
+    :param output: Output file for the initramfs CPIO archive,
+        defaults to ``/usr/src/initramfs.cpio``. ``-`` is stdio.
+    :param force_cleanup: *Recursively* delete the :data:`DESTDIR` directory.
+        Use carefully, especially if run with root privileges.
+    :param debug: Run in non-root mode: no final cleanup of :data:`DESTDIR`.
+        See also :func:`mklayout`.
+    :raises subprocess.CalledProcessError: Error during
+        ``gzip`` or ``loadkeys`` when copying the keymap
+    """
 
     if files is None:
         files = set()
@@ -362,11 +429,11 @@ def entry_point() -> None:
     )
     parser.add_argument(
         "--output", "-o", type=str, default=None,
-        help="set output cpio file"
+        help="set output cpio file (can be set in the config file)"
     )
     parser.add_argument(
         "--clean", "-C", action="store_true", default=False,
-        help="overwrite temporary directory if it exists"
+        help="overwrite temporary directory if it exists, use carefully"
     )
     parser.add_argument(
         '--verbose', '-v', action='store_true', default=False,

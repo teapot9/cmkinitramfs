@@ -1,26 +1,28 @@
-"""Library providing functions and classes to build an /init script
+"""Library providing functions and classes to build an init script
 
-do_xxx() functions will return a string for the xxx action. This string is to
-be written into the /init script.
+``do_foo()`` functions return a string performing the foo action. This
+string should be written into the init script.
 
-_fun_xxx() functions return a string to declare the xxx function available
-from within the /init script.
+``_fun_foo()`` functions return a string defining the foo function. This
+string should be written into the init script.
 
-The Data class defines an abstract object containing data, it has multiple
-herited classes for multiple source of data.
+The :class:`Data` class defines an abstract object containing data,
+it has multiple subclasses for multiple types of data.
+The main methods of those classes are :meth:`Data.load`, :meth:`Data.unload`,
+and :meth:`Data.set_final`.
+The "init script string" returned by some methods should be appended to
+the init script.
 """
 
 import os.path
 from shlex import quote
 from typing import List, Optional, Set, Tuple
 
-from cmkinitramfs.util import read_config
-
 
 def _fun_rescue_shell() -> str:
-    """Rescue shell
-    This function takes one argument and drop the user to /bin/sh,
-    the argument is the error string for the user.
+    """Define the rescue_shell function
+    rescue_shell takes one argument and drop the user to /bin/sh,
+    the argument is the error to print to the user.
     """
     return (
         "rescue_shell()\n"
@@ -33,7 +35,9 @@ def _fun_rescue_shell() -> str:
 
 
 def _fun_printk() -> str:
-    """Outputs a string to kernel log and to stderr"""
+    """Define the printk function
+    printk takes one argument and prints it to both the kernel log and stderr
+    """
     return (
         "printk()\n"
         "{\n"
@@ -44,21 +48,23 @@ def _fun_printk() -> str:
 
 
 def _die(message: str) -> str:
-    """Returns a string stopping the boot process
+    """Stop the boot process with an error
     The string will be single quoted and escaped.
-    This function will load a rescue shell with an error message,
-    this is an abstraction for the rescue_shell function
+    This is a helper calling rescue_shell.
     """
     return f"rescue_shell {quote(f'FATAL: {message}')}"
 
 
-def do_header(home: str = "/root", path: str = "/bin:/sbin") -> str:
+def do_header(home: str = '/root', path: str = '/bin:/sbin') -> str:
     """Create the /init header
-    This will return:
-      - The shebang /bin/sh
-      - Configure HOME variable, defaults to /root
-      - Configure PATH variable, defaults to /bin:/sbin
-      - Declare functions
+
+     - Create the shebang ``/bin/sh``
+     - Configure environment variables
+     - Define ``rescue_shell`` and ``printk``
+
+    :param home: ``HOME`` environment variable
+    :param path: ``PATH`` environment variable
+    :return: Init script string
     """
     return (
         "#!/bin/sh\n"
@@ -77,10 +83,12 @@ def do_header(home: str = "/root", path: str = "/bin:/sbin") -> str:
 
 def do_init() -> str:
     """Initialize the init environment
-    This action will:
-      - Check current PID is 1
-      - Mount /proc, /sys, /dev
-      - Set kernel log level to 3
+
+     - Check the current PID is 1
+     - Mount ``/proc``, ``/sys``, ``/dev``
+     - Set the kernel log level to 3
+
+    :return: Init script string
     """
     return (
         "echo 'Initialization'\n"
@@ -99,9 +107,12 @@ def do_init() -> str:
 
 def do_cmdline() -> str:
     """Parse the kernel command line for known parameters
-    Parsed parameters are:
-      - rescue_shell: Immediately starts a rescue shell
-      - maintenance: Starts a rescue shell after mounting rootfs
+
+    Parsed parameters:
+     - ``rescue_shell``: Immediately starts a rescue shell
+     - ``maintenance``: Starts a rescue shell after mounting rootfs
+
+    :return: Init script string
     """
     return (
         "for cmdline in $(cat /proc/cmdline); do\n"
@@ -115,9 +126,10 @@ def do_cmdline() -> str:
 
 
 def do_keymap(keymap_file: str) -> str:
-    """Load the keymap
-    keymap_file -- String: absolute path to the keymap file
-    within the initramfs
+    """Load a keymap
+
+    :param keymap_file: Absolute path of the file to load
+    :return: Init script string
     """
     return (
         "echo 'Loading keymap'\n"
@@ -130,8 +142,9 @@ def do_keymap(keymap_file: str) -> str:
 
 
 def do_maintenance() -> str:
-    """Check for maintenance
-    If the MAINTENANCE variable is set, load a rescue shell
+    """Drop to a shell if maintenance mode is enabled
+
+    :return: Init script string
     """
     return (
         "[ -n \"${MAINTENANCE}\" ] && "
@@ -142,12 +155,14 @@ def do_maintenance() -> str:
 
 def do_switch_root(init: str, newroot: 'Data') -> str:
     """Cleanup and switch root
-    This action will:
-      - Set kernel log level back to default
-      - Dismount /dev, /sys, /proc
+
+      - Set kernel log level back to boot-time default
+      - Unmount ``/dev``, ``/sys``, ``/proc``
       - Switch root
-    init -- String: init process to execute from new root
-    newroot -- Data: source to use as new root
+
+    :param init: Init process to execute from the new root
+    :param newroot: Data to use as new root
+    :return: Init script string
     """
     return (
         f"printk 'Run {init} as init process'\n"
@@ -161,24 +176,34 @@ def do_switch_root(init: str, newroot: 'Data') -> str:
     )
 
 
-class Data:
-    """Data class for any object representing Data on the system
-    This is an abstract class representing an object containing data.
-    It has two main methods: load() and unload(), and several related
-    methods.
-    The method set_final() declare the object as required for the final
-    boot environment (e.g. rootfs).
+class Data(object):
+    """Base class representing any data on the system
 
-    Private attributes:
-    files -- Set of strings: files needed in the initramfs
-    execs -- Set of strings: executables needed in the initramfs
-    libs -- Set of strings: libraries needed in the initramfs
-    _need -- List of Data objects needed
-    _lneed -- List of Data objects needed for load (those objects
-      can be unloaded once the current object is loaded)
-    _needed_by -- List of Data objects depending on this object
-    _is_final -- bool: Does the data is needed by the final boot environment?
-    _is_loaded -- bool: Data is currently loaded
+    This is an abstract class representing data on the system.
+    Its main methods are :meth:`load` and :meth:`unload`.
+    :meth:`set_final` declare the object as required for the final
+    boot environment (e.g. root fs, usr fs), this will prevent the data
+    from being unloaded.
+
+    :type files: Set[Tuple[str, Optional[str]]]
+    :param files: Files directly needed in the initramfs.
+        Same format as :meth:`deps_files`.
+    :type execs: Set[Tuple[str, Optional[str]]]
+    :param execs: Executables directly needed in the initramfs.
+        Same format as :meth:`deps_files`.
+    :type libs: Set[Tuple[str, Optional[str]]]
+    :param libs: Libraries directly needed in the initramfs.
+        Same format as :meth:`deps_files`.
+    :type _need: List[:class:`Data`]
+    :param _need: Loading and runtime dependencies
+    :type _lneed: List[:class:`Data`]
+    :param _lneed: Loading only dependencies
+    :type _needed_by: List[:class:`Data`]
+    :param _needed_by: Reverse dependencies
+    :type _is_final: bool
+    :param _is_final: The :class:`Data` should not be unloaded
+    :type _is_loaded: bool
+    :param _is_loaded: The :class:`Data` is currently loaded
     """
 
     def __init__(self) -> None:
@@ -187,58 +212,77 @@ class Data:
         self.libs: Set[Tuple[str, Optional[str]]] = set()
         self._need: List['Data'] = []
         self._lneed: List['Data'] = []
+        self._needed_by: List['Data'] = []
         self._is_final = False
         self._is_loaded = False
-        self._needed_by: List['Data'] = []
 
     def deps_files(self) -> Set[Tuple[str, Optional[str]]]:
-        "Recursivelly get a set of files needed in the initramfs"
+        """Recursivelly get files needed in the initramfs
+
+        :return: Each file is a tuple in the format (``src``, ``dest``),
+            where ``src`` is the source file on the current system,
+            and ``dest`` is the destination in the initramfs
+            (relative to its root directory).
+            If ``dest`` is :data:`None`, then ``src`` is used.
+        """
         return self.files.union(
             *(k.deps_files() for k in self._need + self._lneed)
         )
 
     def deps_execs(self) -> Set[Tuple[str, Optional[str]]]:
-        "Recursivelly get a set of executables needed in the initramfs"
+        """Recursivelly get executables needed in the initramfs
+
+        :return: Dependencies in the same format as :meth:`deps_files`.
+        """
         return self.execs.union(
             *(k.deps_execs() for k in self._need + self._lneed)
         )
 
     def deps_libs(self) -> Set[Tuple[str, Optional[str]]]:
-        "Recursivelly get a set of libraries needed in the initramfs"
+        """Recursivelly get libraries needed in the initramfs
+
+        :return: Dependencies in the same format as :meth:`deps_files`.
+        """
         return self.libs.union(
             *(k.deps_libs() for k in self._need + self._lneed)
         )
 
     def is_final(self) -> bool:
-        """Returns a boolean indicating if the data is final"""
+        """Returns a :class:`bool` indicating if the :class:`Data` is final"""
         return self._is_final
 
     def set_final(self) -> None:
         """This function set the data object as final
+
         This means the data is required by the final boot environment
-        and should never be unloaded (as it would be pointless).
-        This will also flag its hard dependencies as final.
+        and should never be unloaded (it would be pointless).
+        This will also mark its hard dependencies as final.
         """
         self._is_final = True
         for k in self._need:
             k.set_final()
 
     def add_dep(self, dep: 'Data') -> None:
-        """Add a Data object to the hard dependencies list"""
+        """Add a :class:`Data` object to the hard dependencies"""
         self._need.append(dep)
         dep._needed_by.append(self)
 
     def add_load_dep(self, dep: 'Data') -> None:
-        """Add a Data object to the loading dependencies list"""
+        """Add a :class:`Data` object to the loading dependencies"""
         self._lneed.append(dep)
         dep._needed_by.append(self)
 
-    def pre_load(self) -> str:
-        """This function does the preparation for loading the Data
-        It loads all the needed dependencies to the system.
-        It should be called before the actual loading of the Data.
-        This method *should not* be called if the Data is already loaded.
-        Returns a string containing the pre-loading script.
+    def _pre_load(self) -> str:
+        """This function does preparation for loading the Data
+
+        Loads all the needed dependencies.
+        It should be called from :meth:`load` before the actual loading
+        of the data.
+        This method *should not* be called if the :class:`Data` is
+        already loaded.
+
+        :return: Init script string
+        :raises DataError: Already loaded
         """
         code = ""
         if self._is_loaded:
@@ -250,12 +294,17 @@ class Data:
                 code += k.load()
         return code
 
-    def post_load(self) -> str:
-        """This function does the post loading cleanup
-        If the object is a loading dependency only,
-        it will load everything needing it in order to be unloaded.
-        It should be called after the actual loading of the Data.
-        Returns a string containing the post-loading script.
+    def _post_load(self) -> str:
+        """This function does post loading cleanup
+
+        If the object is a loading dependency only, it will load all
+        its reverse dependencies in order to be unloaded as soon as possible.
+        Unloading quickly can be useful when dealing with sensitive data
+        (e.g. a LUKS key).
+        It should be called from :meth:`load` after the actual loading
+        of the data.
+
+        :return: Init script string
         """
         code = ""
         # If not final, load data needing self, this will allow an
@@ -272,22 +321,29 @@ class Data:
         return code
 
     def load(self) -> str:
-        """This function is the actual loading of the Data
-        It should be redefined by the herited classes,
-        this definition is a no-op only loading dependencies.
-        Before loading, this function should:
-          - Load the dependencies with pre_load()
-        After loading, this function should:
-          - Unload unnecessary dependencies with post_load()
-        This method *should not* be called if the data is already loaded.
-        Returns a string containing the loading script.
-        """
-        return self.pre_load() + self.post_load()
+        """This function loads the data
 
-    def pre_unload(self) -> str:
-        """This function does the pre unloading sanity checks
-        It should be called before the actual unloading of the data.
-        Returns a string containing the pre-unloading script.
+        It should be redefined by subclasses,
+        this definition is a no-op only dealing with dependencies.
+
+        Before loading, this function should
+        load the dependencies with :meth:`_pre_load`.
+        After loading, this function should
+        unload unnecessary dependencies with :meth:`_post_load`.
+        This method *should not* be called if the data is already loaded.
+
+        :return: Init script string
+        """
+        return self._pre_load() + self._post_load()
+
+    def _pre_unload(self) -> str:
+        """This function does pre unloading sanity checks
+
+        It should be called from :meth:`unload` before the actual unloading
+        of the data.
+
+        :return: Init script string
+        :raises DataError: Not loaded or dependency issue
         """
         code = ""
         if not self._is_loaded:
@@ -296,13 +352,16 @@ class Data:
             raise DataError(f"{self} is still needed or not temporary")
         return code
 
-    def post_unload(self) -> str:
-        """This function does the post unloading cleanup
-        It removes itself from the _needed_by list of all its dependencies
-        and check if the dependency can be unloaded.
-        This method should be called after the unloading of the Data.
+    def _post_unload(self) -> str:
+        """This function does post unloading cleanup
+
+        It removes itself from the :attr:`_needed_by` reverse dependencies
+        of all its dependencies, and check if the dependency can be unloaded.
+        This method should be called from :meth:`unload` after the actual
+        unloading of the data.
         This *should not* be called if the data is not loaded.
-        Returns a string containing the post-unloading script.
+
+        :return: Init script string
         """
         code = ""
         for k in self._need:
@@ -313,19 +372,23 @@ class Data:
         return code
 
     def unload(self) -> str:
-        """This function does the unloading of the Data
-        It should be redefined by the herited classes,
-        this definition is a no-op only unloading unneeded dependencies.
-        Before unloading, this function should:
-          - Check for any dependency error, with pre_unload()
-        After unloading, this function should:
-          - Unload all unneeded dependencies, with post_unload()
-        Returns a string containing the unloading script.
+        """This function unloads data
+
+        It should be redefined by subclasses,
+        this definition is a no-op only dealing with dependencies.
+
+        Before unloading, this function should check for any
+        dependency error, with :meth:`_pre_unload`.
+        After unloading, this function should unload all unneeded
+        dependencies, with :meth:`_post_unload`.
+
+        :return: Init script string
         """
-        return self.pre_unload() + self.post_unload()
+        return self._pre_unload() + self._post_unload()
 
     def __str__(self) -> str:
         """Get the name of the data
+
         This string may be quoted with simple quotes in the script.
         This **has** to be implemented by subclasses.
         """
@@ -333,9 +396,10 @@ class Data:
 
     def path(self) -> str:
         """Get the path of this data
-        This function provides a string allowing access to data from /init,
-        this string can be a path or a command in a subshell (e.g.
-        "$(findfs UUID=foobar)").
+
+        This function provides a string allowing access to data from within
+        the init environment, this string can be a path or a command
+        in a subshell (e.g. ``"$(findfs UUID=foobar)"``).
         This string should be ready to be used in the script without
         being quoted nor escaped.
         This **has** to be implemented by subclasses.
@@ -344,32 +408,35 @@ class Data:
 
 
 class DataError(Exception):
-    """Error in the Data object"""
+    """Error in the :class:`Data` object"""
 
 
 class PathData(Data):
-    """PathData class: Absolute path
+    """Absolute path
 
-    Attributes:
-    filepath -- String: path of the data
+    :type datapath: str
+    :param datapath: Path of the data
     """
 
-    def __init__(self, path: str):
+    def __init__(self, datapath: str):
         super().__init__()
-        self.filepath = path
+        self.datapath = datapath
 
     def __str__(self) -> str:
-        return self.filepath
+        return self.datapath
 
     def path(self) -> str:
-        return quote(self.filepath)
+        return quote(self.datapath)
 
 
 class UuidData(Data):
-    """UuidData class: UUID for device
+    """UUID of a data
 
-    Attributes:
-    uuid -- String: UUID of the data
+    The UUID can be a filesystem UUID, or other UUID known by other
+    :class:`Data` classes (e.g. a MD UUID).
+
+    :type uuid: str
+    :param uuid: UUID of the data
     """
 
     def __init__(self, uuid: str):
@@ -384,14 +451,18 @@ class UuidData(Data):
 
 
 class LuksData(Data):
-    """LuksData class: LUKS encrypted partition
+    """LUKS encrypted block device
 
-    Attributes:
-    source -- Data to unlock (crypto_LUKS volume)
-    name -- String: name used by LUKS for the device
-    key -- Data to use as key, defaults to None: no key file
-    header -- Data to use as header, defaults to None: not needed
-    discard -- Enable discards
+    :type source: :class:`Data`
+    :param source: :class:`Data` to unlock (crypto_LUKS volume)
+    :type name: str
+    :param name: Name for the LUKS volume
+    :type key: Optional[:class:`Data`]
+    :param key: :class:`Data` to use as key file
+    :type header: Optional[:class:`Data`]
+    :param header: :class:`Data` containing the LUKS header
+    :type discard: bool
+    :param discard: Enable discards
     """
 
     def __init__(self, source: Data, name: str,
@@ -414,23 +485,23 @@ class LuksData(Data):
         key_file = f'--key-file {self.key.path()} ' if self.key else ''
         discard = '--allow-discards ' if self.discard else ''
         return (
-            f"{self.pre_load()}"
+            f"{self._pre_load()}"
             f"echo 'Unlocking LUKS device {self}'\n"
             f"cryptsetup {header}{key_file}{discard}"
             f"open {self.source.path()} {quote(self.name)} || "
             f"{_die(f'Failed to unlock LUKS device {self}')}\n"
             "\n"
-            f"{self.post_load()}"
+            f"{self._post_load()}"
         )
 
     def unload(self) -> str:
         return (
-            f"{self.pre_unload()}"
+            f"{self._pre_unload()}"
             f"echo 'Closing LUKS device {self}'\n"
             f"cryptsetup close {quote(self.name)} || "
             f"{_die(f'Failed to close LUKS device {self}')}\n"
             "\n"
-            f"{self.post_unload()}"
+            f"{self._post_unload()}"
         )
 
     def path(self) -> str:
@@ -438,11 +509,12 @@ class LuksData(Data):
 
 
 class LvmData(Data):
-    """LvmData class: LVM logical volume
+    """LVM logical volume
 
-    Attributes:
-    vg_name -- String containing the volume group name
-    lv_name -- String containing the logical volume's name
+    :type vg_name: str
+    :param vg_name: Name of the volume group
+    :type lv_name: str
+    :param lv_name: Name of the logical volume
     """
 
     def __init__(self, vg_name: str, lv_name: str):
@@ -456,7 +528,7 @@ class LvmData(Data):
 
     def load(self) -> str:
         return (
-            f"{self.pre_load()}"
+            f"{self._pre_load()}"
             f"echo 'Enabling LVM logical volume {self}'\n"
             "lvm lvchange --sysinit -a ly "
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || "
@@ -464,12 +536,12 @@ class LvmData(Data):
             "lvm vgscan --mknodes || "
             f"{_die(f'Failed to create LVM nodes for {self}')}\n"
             "\n"
-            f"{self.post_load()}"
+            f"{self._post_load()}"
         )
 
     def unload(self) -> str:
         return (
-            f"{self.pre_unload()}"
+            f"{self._pre_unload()}"
             f"echo 'Disabling LVM logical volume {self}'\n"
             "lvm lvchange --sysinit -a ln "
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || "
@@ -477,7 +549,7 @@ class LvmData(Data):
             "lvm vgscan --mknodes || "
             f"{_die(f'Failed to remove LVM nodes for {self}')}\n"
             "\n"
-            f"{self.post_unload()}"
+            f"{self._post_unload()}"
         )
 
     def path(self) -> str:
@@ -487,12 +559,17 @@ class LvmData(Data):
 
 
 class MountData(Data):
-    """Data class for mount points
+    """Mount point
 
-    Attributes:
-    source -- Data object to take as source for the mount
-    mountpoint -- String: path to use as mountpoint
-    options -- String: mount options to use, defaults to "ro"
+    :type source: :class:`Data`
+    :param source: :class:`Data` to use as source
+        (e.g. /dev/sda1, my-luks-data)
+    :type mountpoint: str
+    :param mountpoint: Absolute path of the mountpoint
+    :type filesystem: str
+    :param filesystem: Filesystem (used for ``mount -t filesystem``)
+    :type options: str
+    :param options: Mount options
     """
 
     def __init__(self, source: Data, mountpoint: str, filesystem: str,
@@ -538,7 +615,7 @@ class MountData(Data):
             else ''
         )
         return (
-            f"{self.pre_load()}"
+            f"{self._pre_load()}"
             f"echo 'Mounting filesystem {self}'\n"
             f"{fsck}"
             f"{mkdir}"
@@ -546,17 +623,17 @@ class MountData(Data):
             f"{self.source.path()} {quote(self.mountpoint)} || "
             f"{_die(f'Failed to mount filesystem {self}')}\n"
             "\n"
-            f"{self.post_load()}"
+            f"{self._post_load()}"
         )
 
     def unload(self) -> str:
         return (
-            f"{self.pre_unload()}"
+            f"{self._pre_unload()}"
             f"echo 'Unmounting filesystem {self}'\n"
             f"umount {quote(self.mountpoint)} || "
             f"{_die(f'Failed to unmount filesystem {self}')}\n"
             "\n"
-            f"{self.post_unload()}"
+            f"{self._post_unload()}"
         )
 
     def path(self) -> str:
@@ -564,11 +641,14 @@ class MountData(Data):
 
 
 class MdData(Data):
-    """Data class for MD RAID
+    """MD RAID
 
-    Attributes:
-    sources -- List of Data objects to use as sources
-    name -- Name to use for the RAID
+    :type sources: List[:class:`Data`]
+    :param sources: :class:`Data` to use as sources (e.g. /dev/sda1 and
+        /dev/sdb1; or UUID=foo).
+    :type name: str
+    :param name: Name for the MD device
+    :raises ValueError: No :class:`Data` source
     """
 
     def __init__(self, sources: List[Data], name: str):
@@ -577,7 +657,7 @@ class MdData(Data):
         self.sources = sources
         self.name = name
         if not self.sources:
-            raise DataError(f"{self} has no source defined")
+            raise ValueError(f"{self} has no source defined")
 
     def __str__(self) -> str:
         return self.name
@@ -591,24 +671,24 @@ class MdData(Data):
             else:
                 sources_string += f"{source.path()} "
         return (
-            f"{self.pre_load()}"
+            f"{self._pre_load()}"
             f"echo 'Assembling MD RAID {self}'\n"
             "MDADM_NO_UDEV=1 "
             f"mdadm --assemble {sources_string}{quote(self.name)} || "
             f"{_die(f'Failed to assemble MD RAID {self}')}\n"
             "\n"
-            f"{self.post_load()}"
+            f"{self._post_load()}"
         )
 
     def unload(self) -> str:
         return (
-            f"{self.pre_unload()}"
+            f"{self._pre_unload()}"
             f"echo 'Stopping MD RAID {self}'\n"
             "MDADM_NO_UDEV=1 "
             f"mdadm --stop {quote(self.name)} || "
             f"{_die(f'Failed to stop MD RAID {self}')}\n"
             "\n"
-            f"{self.post_unload()}"
+            f"{self._post_unload()}"
         )
 
     def path(self) -> str:
@@ -616,11 +696,12 @@ class MdData(Data):
 
 
 class CloneData(Data):
-    """Data class for cloning data objects
+    """Clone a :class:`Data` to another
 
-    Attributes:
-    source -- Data object: source directory
-    dest -- Data object: destination directory
+    :type source: :class:`Data`
+    :param source: :class:`Data` to use as source
+    :type dest: :class:`Data`
+    :param dest: :class:`Data` to use as destination
     """
 
     def __init__(self, source: Data, dest: Data):
@@ -633,12 +714,12 @@ class CloneData(Data):
 
     def load(self) -> str:
         return (
-            f"{self.pre_load()}"
+            f"{self._pre_load()}"
             f"echo 'Cloning {self}'\n"
             f"cp -aT {self.source.path()} {self.dest.path()} || "
             f"{_die(f'Failed to clone {self}')}\n"
             "\n"
-            f"{self.post_load()}"
+            f"{self._post_load()}"
         )
 
     def path(self) -> str:
@@ -647,7 +728,14 @@ class CloneData(Data):
 
 def mkinit(root: Data, mounts: Optional[Set[Data]] = None,
            keymap: Optional[str] = None, init: Optional[str] = None) -> str:
-    """Create the init script"""
+    """Create the init script
+
+    :param root: :class:`Data` to use as rootfs
+    :param mounts: :class:`Data` needed in addition of rootfs
+    :param keymap: Path of the keymap to load, :data:`None` means no keymap
+        loaded, an empty string will load the default ``/root/keymap.bmap``
+    :param init: Init script to use, defaults to ``/sbin/init``
+    """
     if mounts is None:
         mounts = set()
     if init is None:
@@ -668,6 +756,8 @@ def mkinit(root: Data, mounts: Optional[Set[Data]] = None,
 
 def entry_point() -> None:
     """Main entry point of the module"""
+    from cmkinitramfs.util import read_config
+
     config = read_config()
     print(mkinit(
         root=config['root'], mounts=config['mounts'],

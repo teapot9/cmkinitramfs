@@ -9,19 +9,19 @@ setuptools.setup(
     name=__name__,
     version=__version__,
     description=__doc__,
-    long_description=open('README.md', 'r').read(),
-    long_description_content_type='text/markdown',
+    long_description=open('README.rst', 'r').read(),
+    long_description_content_type='text/x-rst',
 
     author=__author__,
     author_email=__email__,
     license=__license__,
     url=__url__,
 
-    python_requires='>=3.6',
-    install_requires=[
-        'pyelftools',
-    ],
-    extras_require={},
+    python_requires='>=3.6 <4',
+    install_requires=[],
+    extras_require={
+        'doc': ['sphinx', 'sphinx_rtd_theme'],
+    },
 
     packages=['cmkinitramfs'],
     entry_points={
