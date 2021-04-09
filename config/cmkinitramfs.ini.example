@@ -20,11 +20,11 @@
 #
 
 [DEFAULT]
-#build-dir = /tmp/initramfs
 root = mnt-root
 mountpoints = mnt-usr
-keymap = /usr/share/keymaps/i386/azerty/fr.map.gz
-#keymap-init = /root/keymap.bmap
+keymap = yes
+keymap-src = fr
+#keymap-dest = /root/keymap.bmap
 init = /sbin/openrc-init
 files = /root/key:/root/key.luks
 

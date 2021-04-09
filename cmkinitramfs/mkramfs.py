@@ -1,123 +1,37 @@
 """Library providing functions to build an initramfs
 
-This library provides essential tools to build an initramfs, for instance
-:func:`mklayout` and :func:`mkcpio`.
-It also provides utilities like :func:`copyfile` and :func:`findexec`.
+This library provides a main class :class:`Initramfs` which handles the content
+of an initramfs. This class supports creating an initramfs tree inside
+a directlry. It also can generate a CPIO file list compatible with the Linux
+kernel's ``gen_init_cpio`` utility. (See
+https://www.kernel.org/doc/html/latest/filesystems/ramfs-rootfs-initramfs.html
+for mor details.)
+
+Each file type of the initramfs has an :class:`Item` subclass. Those classes
+provide methods used by :class:`Initramfs` generation methods.
+
+This library also provides utilities like :func:`findexec`.
 Multiple helper functions are also available (e.g. :func:`find_elf_deps` to
 list libraries needed by an ELF executable).
 
 The main function is :func:`mkinitramfs` to build the complete initramfs.
 """
 
-import argparse
-import collections
 import glob
 import hashlib
 import logging
 import os
 import shutil
+import socket
 import stat
 import subprocess
-import sys
-from typing import BinaryIO, Iterator, List, Optional, Set, Tuple
-
-import cmkinitramfs.mkinit as mkinit
-import cmkinitramfs.util as util
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from typing import IO, Iterable, Iterator, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
-#: Temporary build directory for the initramfs
-DESTDIR = '/tmp/initramfs'
-
-
-def mklayout(debug: bool = False) -> None:
-    """Create the base layout of the initramfs
-
-    The :data:`DESTDIR` directory should not exist when calling this function.
-
-    :param debug: Run in non-root mode: does not create special files
-        (e.g. ``/dev/console``, ``/dev/tty``). This option is only present
-        for debugging purposes. Those files are required for a working
-        initramfs.
-    """
-    logger.debug("Creating initramfs layout in %s", DESTDIR)
-
-    os.makedirs(DESTDIR, mode=0o755, exist_ok=False)
-
-    os.mkdir(f"{DESTDIR}/bin", mode=0o755)
-    os.mkdir(f"{DESTDIR}/dev", mode=0o755)
-    os.mkdir(f"{DESTDIR}/etc", mode=0o755)
-    os.mkdir(f"{DESTDIR}/mnt", mode=0o755)
-    os.mkdir(f"{DESTDIR}/proc", mode=0o555)
-    os.mkdir(f"{DESTDIR}/root", mode=0o700)
-    os.mkdir(f"{DESTDIR}/run", mode=0o755)
-    os.mkdir(f"{DESTDIR}/sbin", mode=0o755)
-    os.mkdir(f"{DESTDIR}/sys", mode=0o555)
-
-    # Only create /lib* if they exists on the current system
-    for libdir in ["/lib", "/lib32", "/lib64"]:
-        if os.path.islink(libdir):
-            os.symlink(os.readlink(libdir), f"{DESTDIR}{libdir}")
-        elif os.path.isdir(libdir):
-            os.mkdir(f"{DESTDIR}{libdir}", mode=0o755)
-
-    if debug:
-        return
-    os.mknod(f"{DESTDIR}/dev/console", 0o600 | stat.S_IFCHR, os.makedev(5, 1))
-    os.mknod(f"{DESTDIR}/dev/tty", 0o666 | stat.S_IFCHR, os.makedev(5, 0))
-    os.mknod(f"{DESTDIR}/dev/null", 0o666 | stat.S_IFCHR, os.makedev(1, 3))
-
-
-def copyfile(src: str, dest: Optional[str] = None,
-             deps: bool = True, conflict_ignore: bool = False) -> None:
-    """Copy a file to the initramfs
-
-    If the file is a symlink, it is dereferenced.
-    If it is a dynamically linked ELF file, its dependencies
-    are also copied.
-
-    :param src: Absolute or relative path of the source file
-    :param dest: Absolute path of the destination, relative to the
-        initramfs root, defaults to ``src``
-    :param deps: Copy dependencies if ELF
-    :raises FileNotFoundError: Source file not found
-    :raises FileExistsError: Destination file exists and is different
-    """
-
-    # Sanity checks
-    if not os.path.exists(src):
-        raise FileNotFoundError(src)
-
-    # Configure paths
-    src = os.path.abspath(src)
-    if not dest:
-        dest = src
-    # Strip /usr directory, not needed in initramfs
-    if "/usr/local/" in dest:
-        logger.debug("Stripping /usr/local/ from %s", dest)
-        dest = dest.replace("/usr/local", "/")
-    elif "/usr/" in dest:
-        logger.debug("Stripping /usr/ from %s", dest)
-        dest = dest.replace("/usr/", "/")
-    # Check destination base directory exists (e.g. /bin)
-    if os.path.dirname(dest) != "/" \
-            and not os.path.isdir(f"{DESTDIR}/{dest.split('/')[1]}"):
-        raise FileNotFoundError(f"{DESTDIR}/{dest.split('/')[1]}")
-    dest = DESTDIR + dest
-
-    if os.path.exists(dest):
-        if conflict_ignore or hash_file(src) == hash_file(dest):
-            logger.debug("File %s has already been copied to %s", src, dest)
-            return
-        raise FileExistsError(f"Cannot copy {src} to {dest}")
-
-    # Copy dependencies
-    if deps:
-        for dep in find_elf_deps(src):
-            copyfile(dep)
-
-    logger.debug("Copying %s to %s", src, dest)
-    os.makedirs(os.path.dirname(dest), mode=0o755, exist_ok=True)
-    shutil.copy(src, dest, follow_symlinks=True)
+BINARY_KEYMAP_MAGIC = b'bkeymap'
 
 
 def findlib(lib: str) -> str:
@@ -228,16 +142,17 @@ def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
             raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
 
-def mkcpio(dest: BinaryIO) -> None:
-    """Create CPIO archive from the :data:`DESTDIR` directory
+def mkcpio_from_dir(src: str, dest: IO[bytes]) -> None:
+    """Create CPIO archive from a given directory
 
+    :param src: Directory from which the archive is created
     :param dest: Destination stream of the CPIO data
     :raises subprocess.CalledProcessError: Error during ``find`` or ``cpio``
     """
     logger.debug("Creating CPIO archive")
 
     oldpwd = os.getcwd()
-    os.chdir(DESTDIR)
+    os.chdir(src)
     cmd = ["find", ".", "-print0"]
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as find:
         cmd = ['cpio', '--quiet', '--null', '--create', '--format=newc']
@@ -249,14 +164,14 @@ def mkcpio(dest: BinaryIO) -> None:
     os.chdir(oldpwd)
 
 
-def cleanup() -> None:
-    """Cleanup :data:`DESTDIR`
+def mkcpio_from_list(src: str, dest: IO[bytes]) -> None:
+    """Create CPIO archive from a given CPIO list
 
-    Warning: the :data:`DESTDIR` directory is *recursively deleted*.
+    :param src: Path of the CPIO list
+    :param dest: Destination stream of the CPIO data
+    :raises subprocess.CalledProcessError: Error during ``gen_init_cpio``
     """
-    logger.debug("Cleaning up %s", DESTDIR)
-    if os.path.exists(DESTDIR):
-        shutil.rmtree(DESTDIR)
+    subprocess.check_call(['gen_init_cpio', src], stdout=dest)
 
 
 def hash_file(filepath: str, chunk_size: int = 65536) -> bytes:
@@ -273,52 +188,499 @@ def hash_file(filepath: str, chunk_size: int = 65536) -> bytes:
     return sha512.digest()
 
 
-def find_duplicates() -> Iterator[List[str]]:
-    """Find duplicated files in :data:`DESTDIR`
+class MergeError(Exception):
+    """Cannot merge an Item into another"""
 
-    :return: Iterator of lists with the absolute path of identical files,
-        relative to current system root
+
+class Item(ABC):
+    """An object within the initramfs"""
+
+    def merge(self, other: 'Item') -> None:
+        """Merge two items together
+
+        By default, two items can only be merged if they are equal.
+        Default merge is just a no-op. Subclasses can override this
+        as done by :class:`File` to handle hardlink of identical files.
+
+        :param other: :class:`Item` to merge into ``self``
+        :raises MergeError: Cannot merge the items
+        """
+        if self != other:
+            raise MergeError(f"Different items: {self} != {other}")
+
+    def __iter__(self) -> Iterator[str]:
+        """Get the paths of this item within the initramfs
+
+        This method should be overriden by subclasses which add files
+        to the initramfs.
+
+        :return: Iterator over this :class:`Item`'s destination paths
+        """
+        return iter(())
+
+    def __contains__(self, path: str) -> bool:
+        """Check if this item is present at the given path in the initramfs
+
+        This method should be overriden by subclasses which add files
+        to the initramfs.
+
+        :return: :data:`True` if ``path`` is part of this :class:`Item`'s
+            destination paths, :data:`False` otherwise
+        """
+        return False
+
+    @abstractmethod
+    def build_to_cpio_list(self) -> str:
+        """String representing the item
+
+        The string is formatted to be compatible with the ``gen_init_cpio``
+        tool from the Linux kernel.
+        This method has to be defined by subclasses.
+        """
+
+    @abstractmethod
+    def build_to_directory(self, base_dir: str) -> None:
+        """Add this item to a real filesystem
+
+        This will copy or create a file on a real filesystem.
+        This method has to be defined by subclasses.
+
+        :param base_dir: Path to use as root directory (e.g. using
+            ``/tmp/initramfs``, ``/bin/ls`` will be copied to
+            ``/tmp/initramfs/bin/ls``)
+        """
+
+
+@dataclass
+class File(Item):
+    """Normal file within the initramfs
+
+    :param mode: Permissions (e.g. 0o644)
+    :param user: Owner user (UID)
+    :param group: Owner group (GID)
+    :param dests: Paths in the initramfs (hard-linked)
+    :param src: Source file to copy (not unique to the file)
+    :param data_hash: Hash of the file (can be obtained with :func:`hash_file`)
     """
-    # files_dic: Dictionnary, keys are sha512 hash, value is a list
-    # of files sharing this hash
-    files_dic = collections.defaultdict(list)
-    for root, _, files in os.walk(DESTDIR):
-        for filename in files:
-            filepath = root + "/" + filename
-            if os.path.isfile(filepath) and not os.path.islink(filepath):
-                files_dic[hash_file(filepath)].append(filepath)
+    mode: int
+    user: int
+    group: int
+    dests: Set[str]
+    src: str
+    data_hash: bytes
 
-    for key in files_dic:
-        if len(files_dic[key]) > 1:
-            yield files_dic[key]
+    def __str__(self) -> str:
+        return f"file from {self.src}"
+
+    def merge(self, other: Item) -> None:
+        if isinstance(other, File) \
+                and self.data_hash == other.data_hash \
+                and self.mode == other.mode \
+                and self.user == other.user \
+                and self.group == other.group:
+            self.dests |= other.dests
+        else:
+            raise MergeError(f"Different files: {self} and {other}")
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.dests)
+
+    def __contains__(self, path: str) -> bool:
+        return path in self.dests
+
+    def build_to_cpio_list(self) -> str:
+        dests = iter(sorted(self.dests))
+        return f'file {next(dests)} {self.src} ' \
+            + f'{self.mode:03o} {self.user} {self.mode}' \
+            + (' ' if len(self.dests) > 1 else '') \
+            + ' '.join(dests)
+
+    def build_to_directory(self, base_dir: str) -> None:
+        iter_dests = iter(self.dests)
+        # Copy reference file
+        base_dest = base_dir + next(iter_dests)
+        shutil.copy(self.src, base_dest, follow_symlinks=True)
+        os.chmod(base_dest, self.mode)
+        os.chown(base_dest, self.user, self.group)
+        # Hardlink other files
+        for dest in iter_dests:
+            abs_dest = base_dir + dest
+            os.link(base_dest, abs_dest)
 
 
-def hardlink_duplicates() -> None:
-    """Hardlink all duplicated files in :data:`DESTDIR`"""
-    for duplicates in find_duplicates():
-        logger.debug("Hardlinking duplicates %s",
-                     [k.replace(DESTDIR, '') for k in duplicates])
-        source = duplicates.pop()
-        for duplicate in duplicates:
-            os.remove(duplicate)
-            os.link(source, duplicate)
+@dataclass
+class Directory(Item):
+    """Directory within the initramfs
+
+    :param mode: Permissions (e.g. 0o644)
+    :param user: Owner user (UID)
+    :param group: Owner group (GID)
+    :param dest: Path in the initramfs
+    """
+    mode: int
+    user: int
+    group: int
+    dest: str
+
+    def __str__(self) -> str:
+        return f"directory {self.dest}"
+
+    def __iter__(self) -> Iterator[str]:
+        return iter((self.dest,))
+
+    def __contains__(self, path: str) -> bool:
+        return path == self.dest
+
+    def build_to_cpio_list(self) -> str:
+        return f'dir {self.dest} {self.mode:03o} {self.user} {self.group}'
+
+    def build_to_directory(self, base_dir: str) -> None:
+        abs_dest = base_dir + self.dest
+        os.mkdir(abs_dest)
+        os.chmod(abs_dest, self.mode)
+        os.chown(abs_dest, self.user, self.group)
+
+
+@dataclass
+class Node(Item):
+    """Special file within the initramfs
+
+    :param mode: Permissions (e.g. 0o644)
+    :param user: Owner user (UID)
+    :param group: Owner group (GID)
+    :param dest: Path in the initramfs
+    :param nodetype: Type of node (block, character)
+    :param major: Major number of the node
+    :param minor: Minor number of the node
+    """
+    mode: int
+    user: int
+    group: int
+    dest: str
+    nodetype: 'Node.NodeType'
+    major: int
+    minor: int
+
+    class NodeType(Enum):
+        """Special file type"""
+        #: Block device
+        BLOCK = 'b'
+        #: Character device
+        CHARACTER = 'c'
+
+    def __str__(self) -> str:
+        if self.nodetype == Node.NodeType.CHARACTER:
+            return f"character device {self.major} {self.minor} {self.dest}"
+        if self.nodetype == Node.NodeType.BLOCK:
+            return f"block device {self.major} {self.minor} {self.dest}"
+        raise ValueError(f"Unknown node type {self.nodetype}")
+
+    def __iter__(self) -> Iterator[str]:
+        return iter((self.dest,))
+
+    def __contains__(self, path: str) -> bool:
+        return path == self.dest
+
+    def build_to_cpio_list(self) -> str:
+        return f'nod {self.dest} {self.mode:03o} {self.user} {self.group} ' \
+            f'{self.nodetype.value} {self.major} {self.minor}'
+
+    def build_to_directory(self, base_dir: str) -> None:
+        abs_dest = base_dir + self.dest
+        if self.nodetype == Node.NodeType.BLOCK:
+            mode = self.mode | stat.S_IFBLK
+        elif self.nodetype == Node.NodeType.CHARACTER:
+            mode = self.mode | stat.S_IFCHR
+        os.mknod(abs_dest, mode, os.makedev(self.major, self.minor))
+        os.chmod(abs_dest, self.mode)
+        os.chown(abs_dest, self.user, self.group)
+
+
+@dataclass
+class Symlink(Item):
+    """Symlinks within the initramfs
+
+    :param mode: Permissions (e.g. 0o644)
+    :param user: Owner user (UID)
+    :param group: Owner group (GID)
+    :param dest: Path in the initramfs
+    :param target: Link target
+    """
+    mode: int
+    user: int
+    group: int
+    dest: str
+    target: str
+
+    def __str__(self) -> str:
+        return f"symlink {self.dest} to {self.target}"
+
+    def __iter__(self) -> Iterator[str]:
+        return iter((self.dest,))
+
+    def __contains__(self, path: str) -> bool:
+        return path == self.dest
+
+    def build_to_cpio_list(self) -> str:
+        return f'slink {self.dest} {self.target} ' \
+            f'{self.mode:03o} {self.user} {self.group}'
+
+    def build_to_directory(self, base_dir: str) -> None:
+        if self.mode != 0o777:
+            logger.warning("Cannot set mode for %s", self)
+        abs_dest = base_dir + self.dest
+        os.symlink(self.target, abs_dest)
+        os.chown(abs_dest, self.user, self.group, follow_symlinks=False)
+
+
+@dataclass
+class Pipe(Item):
+    """Named pipe (FIFO) within the initramfs
+
+    :param mode: Permissions (e.g. 0o644)
+    :param user: Owner user (UID)
+    :param group: Owner group (GID)
+    :param dest: Path in the initramfs
+    """
+    mode: int
+    user: int
+    group: int
+    dest: str
+
+    def __str__(self) -> str:
+        return f"named pipe {self.dest}"
+
+    def __iter__(self) -> Iterator[str]:
+        return iter((self.dest,))
+
+    def __contains__(self, path: str) -> bool:
+        return path == self.dest
+
+    def build_to_cpio_list(self) -> str:
+        return f'pipe {self.dest} {self.mode:03o} {self.user} {self.group}'
+
+    def build_to_directory(self, base_dir: str) -> None:
+        abs_dest = base_dir + self.dest
+        os.mkfifo(abs_dest)
+        os.chmod(abs_dest, self.mode)
+        os.chown(abs_dest, self.user, self.group)
+
+
+@dataclass
+class Socket(Item):
+    """Named socket within the initramfs
+
+    :param mode: Permissions (e.g. 0o644)
+    :param user: Owner user (UID)
+    :param group: Owner group (GID)
+    :param dest: Path in the initramfs
+    """
+    mode: int
+    user: int
+    group: int
+    dest: str
+
+    def __str__(self) -> str:
+        return f"named socket {self.dest}"
+
+    def __iter__(self) -> Iterator[str]:
+        return iter((self.dest,))
+
+    def __contains__(self, path: str) -> bool:
+        return path == self.dest
+
+    def build_to_cpio_list(self) -> str:
+        return f'sock {self.dest} {self.mode:03o} {self.user} {self.group}'
+
+    def build_to_directory(self, base_dir: str) -> None:
+        abs_dest = base_dir + self.dest
+        sock = socket.socket(socket.AF_UNIX)
+        sock.bind(abs_dest)
+        os.chmod(abs_dest, self.mode)
+        os.chown(abs_dest, self.user, self.group)
+
+
+class Initramfs:
+    """An initramfs archive
+
+    :param user: Default user to use when creating items
+    :param group: Default group to use when creating items
+    :param items: Items in the initramfs
+    """
+    user: int
+    group: int
+    items: List[Item]
+
+    def __init__(self, user: int = 0, group: int = 0) -> None:
+        self.user = user
+        self.group = group
+        self.items = []
+        self.__mklayout()
+
+    def __mklayout(self) -> None:
+        """Create the base layout of the initramfs"""
+        logger.debug("Creating initramfs layout")
+
+        self.items.append(Directory(0o755, self.user, self.group, '/'))
+
+        # Base layout
+        self.add_item(Directory(0o755, self.user, self.group, '/bin'))
+        self.add_item(Directory(0o755, self.user, self.group, '/dev'))
+        self.add_item(Directory(0o755, self.user, self.group, '/etc'))
+        self.add_item(Directory(0o755, self.user, self.group, '/mnt'))
+        self.add_item(Directory(0o755, self.user, self.group, '/proc'))
+        self.add_item(Directory(0o755, self.user, self.group, '/root'))
+        self.add_item(Directory(0o755, self.user, self.group, '/run'))
+        self.add_item(Directory(0o755, self.user, self.group, '/sbin'))
+        self.add_item(Directory(0o755, self.user, self.group, '/sys'))
+
+        # Only create /lib* if they exists on the current system
+        for libdir in ["/lib", "/lib32", "/lib64"]:
+            if os.path.islink(libdir):
+                self.add_item(Symlink(0o777, self.user, self.group,
+                                      libdir, os.readlink(libdir)))
+            elif os.path.isdir(libdir):
+                self.add_item(Directory(0o755, self.user, self.group, libdir))
+
+        # Create necessary character devices
+        self.add_item(Node(0o600, self.user, self.group, '/dev/console',
+                           Node.NodeType.CHARACTER, 5, 1))
+        self.add_item(Node(0o666, self.user, self.group, '/dev/tty',
+                           Node.NodeType.CHARACTER, 5, 0))
+        self.add_item(Node(0o666, self.user, self.group, '/dev/null',
+                           Node.NodeType.CHARACTER, 1, 3))
+
+    def __iter__(self) -> Iterator[Item]:
+        """Iterate over the :class:`Item` instances in the initramfs"""
+        return iter(self.items)
+
+    def add_item(self, new_item: Item) -> None:
+        """Add an item to the initramfs
+
+        If an identical item is already present, merges them together.
+
+        :param new_item: :class:`Item` instance to add
+        :raises MergeError: Item cannot be merged into the initramfs
+            (missing parent directory or file conflict)
+        """
+
+        for cur_item in self:
+            # Check if the item can be merged with any existing item
+            try:
+                cur_item.merge(new_item)
+                break
+            except MergeError as error:
+                for dest in cur_item:
+                    if dest in new_item:
+                        raise MergeError(
+                            f"File collision bewteen {new_item} and {cur_item}"
+                        ) from error
+
+        else:
+            # Check if the parent directory of all destinations exists
+            for dest in new_item:
+                dirname = os.path.dirname(dest)
+                for item in self:
+                    if isinstance(item, Directory) \
+                            and dirname in item:
+                        break
+                else:
+                    raise MergeError(f"Missing directory: {dirname}")
+            self.items.append(new_item)
+
+    def add_file(self, src: str, dest: Optional[str] = None,
+                 deps: bool = True, mode: Optional[int] = None) -> None:
+        """Add a file to the initramfs
+
+        If the file is a symlink, it is dereferenced.
+        If it is a dynamically linked ELF file, its dependencies
+        are also added (if ``deps`` is :data:`True`).
+
+        :param src: Absolute or relative path of the source file
+        :param dest: Absolute path of the destination, relative to the
+            initramfs root, defaults to ``src``
+        :param deps: Add needed dependencies (ELF)
+        :param mode: File permissions to use, defaults to same as ``src``
+        :raises FileNotFoundError: Source file not found
+        :raises MergeError: Destination file exists and is different,
+            or missing parent directory (raised from :meth:`add_item`)
+        """
+
+        # Sanity checks
+        if not os.path.exists(src):
+            raise FileNotFoundError(src)
+
+        # Configure paths
+        src = os.path.abspath(src)
+        if not dest:
+            dest = src
+        # Strip /usr directory, not needed in initramfs
+        if "/usr/local/" in dest:
+            logger.debug("Stripping /usr/local/ from %s", dest)
+            dest = dest.replace("/usr/local", "/")
+        elif "/usr/" in dest:
+            logger.debug("Stripping /usr/ from %s", dest)
+            dest = dest.replace("/usr/", "/")
+        # Check whitespaces
+        if ' ' in dest or '\t' in dest or '\n' in dest:
+            logger.warning("Whitespaces are not supported by gen_init_cpio: "
+                           "%s", dest)
+
+        # Copy dependencies
+        if deps:
+            for dep in find_elf_deps(src):
+                self.add_file(dep, deps=False)
+
+        logger.debug("Adding %s as %s", src, dest)
+        if mode is None:
+            mode = os.stat(src, follow_symlinks=True).st_mode & 0o7777
+        self.add_item(File(mode, self.user, self.group,
+                           {dest}, src, hash_file(src)))
+
+    def build_to_cpio_list(self, dest: IO[str]) -> None:
+        """Write a CPIO list into a file
+
+        This list is compatible with Linux's ``gen_init_cpio``.
+        See :meth:`Item.build_to_cpio_list`.
+
+        :param dest: Stream in which the list is written
+        """
+        for item in self:
+            logger.debug("Outputting %s", item)
+            dest.write(item.build_to_cpio_list())
+            dest.write('\n')
+
+    def build_to_directory(self, dest: str, do_nodes: bool = True) -> None:
+        """Copy or create all items to a real filesystem
+
+        See :meth:`Item.build_to_directory`.
+
+        :param dest: Path to use as root directory of the initramfs
+        :param do_nodes: Also creates :class:`Node` items, (used for debugging:
+            ``CAP_MKNOD`` is needed to create some special devices)
+        """
+        for item in self:
+            if not do_nodes and isinstance(item, Node):
+                logger.warning("Not building Node %s", item)
+                continue
+            logger.debug("Building %s", item)
+            item.build_to_directory(dest)
 
 
 def mkinitramfs(
-        init_str: str,
-        files: Optional[Set[Tuple[str, Optional[str]]]] = None,
-        execs: Optional[Set[Tuple[str, Optional[str]]]] = None,
-        libs: Optional[Set[Tuple[str, Optional[str]]]] = None,
-        keymap_src: Optional[str] = None,
-        keymap_dest: Optional[str] = None,
-        output: Optional[str] = None,
-        force_cleanup: bool = False,
-        debug: bool = False,
+        initramfs: Initramfs,
+        init: str,
+        files: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
+        execs: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
+        libs: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
+        keymap: Optional[Tuple[str, str]] = None,
         ) -> None:
-    """Creates the initramfs
+    """Add given files to the initramfs
 
-    :param init_str: Init script (can be obtained from
-        :func:`cmkinitramfs.mkinit.mkinit`).
+    :param initramfs: :class:`Initramfs` instance to which the files will be
+        added.
+    :param init: Path of the init script to use (the script can be generated
+        with :func:`cmkinitramfs.mkinit.mkinit`).
     :param files: Files to add to the initramfs, each tuple is in the format
         ``(src, dest)``. ``src`` is the path on the current system, ``dest``
         is the path within the initramfs. This is the same format as
@@ -329,18 +691,10 @@ def mkinitramfs(
     :param libs: Libraries to add to the initramfs. ``src`` can be the
         base name, it will be searched on the system with :func:`findlib`.
         Same format as :meth:`cmkinitramfs.mkinit.Data.deps_files`.
-    :param keymap_src: Path of the keymap to use on the system, :data:`None`
-        will not add any keymap.
-    :param keymap_dest: Path of the keymap within the initramfs,
-        defaults to ``/root/keymap.bmap``.
-    :param output: Output file for the initramfs CPIO archive,
-        defaults to ``/usr/src/initramfs.cpio``. ``-`` is stdio.
-    :param force_cleanup: *Recursively* delete the :data:`DESTDIR` directory.
-        Use carefully, especially if run with root privileges.
-    :param debug: Run in non-root mode: no final cleanup of :data:`DESTDIR`.
-        See also :func:`mklayout`.
-    :raises subprocess.CalledProcessError: Error during
-        ``gzip`` or ``loadkeys`` when copying the keymap
+    :param keymap: Tuple in the format ``(src, dest)``. ``src`` is the
+        keymap to add to the initramfs, ``dest`` is the path of the keymap
+        within the initramfs. If this argument is :data:`None`, no keymap
+        will be added to the initramfs.
     """
 
     if files is None:
@@ -349,135 +703,50 @@ def mkinitramfs(
         execs = set()
     if libs is None:
         libs = set()
-    if keymap_dest is None:
-        keymap_dest = '/root/keymap.bmap'
-    if output is None:
-        output = '/usr/src/initramfs.cpio'
 
-    # Cleanup and initialization
-    if force_cleanup:
-        logger.warning("Overwriting temporary directory %s", DESTDIR)
-        cleanup()
-    logger.info("Building initramfs in %s", DESTDIR)
-    mklayout(debug=debug)
-
-    # /init
-    logger.info("Generating /init")
-    with open(f'{DESTDIR}/init', 'wt') as dest:
-        dest.write(init_str)
-    os.chmod(f'{DESTDIR}/init', 0o755)
-
-    # Copy files, execs, libs
-    logger.info("Copying files %s", [k[0] for k in files])
+    # Add necessary files
+    logger.info("Adding files %s", [k[0] for k in files])
     for fsrc, fdest in files:
-        copyfile(fsrc, fdest)
-    logger.info("Copying executables %s", [k[0] for k in execs])
+        initramfs.add_file(fsrc, fdest)
+    logger.info("Adding executables %s", [k[0] for k in execs])
     for fsrc, fdest in execs:
-        copyfile(findexec(fsrc), fdest)
-    logger.info("Copying libraries %s", [k[0] for k in libs])
+        initramfs.add_file(findexec(fsrc), fdest)
+    logger.info("Adding libraries %s", [k[0] for k in libs])
     for fsrc, fdest in libs:
-        copyfile(findlib(fsrc), fdest)
+        initramfs.add_file(findlib(fsrc), fdest)
 
-    # Copy keymap
-    if keymap_src is not None:
-        logger.info("Copying keymap %s to %s", keymap_src, keymap_dest)
-        gzip_cmd = ['gzip', '-kdc', keymap_src]
-        loadkeys_cmd = ['loadkeys', '--bkeymap']
-        with subprocess.Popen(gzip_cmd, stdout=subprocess.PIPE) as gzip, \
-                open(f'{DESTDIR}/{keymap_dest}', 'wb') as keymap_dest_f, \
-                subprocess.Popen(loadkeys_cmd, stdin=gzip.stdout,
-                                 stdout=keymap_dest_f) as loadkeys:
-            if loadkeys.wait() != 0:
-                raise subprocess.CalledProcessError(loadkeys.returncode,
-                                                    loadkeys.args)
-            if gzip.wait() != 0:
-                raise subprocess.CalledProcessError(gzip.returncode,
-                                                    gzip.args)
-        os.chmod(f'{DESTDIR}/{keymap_dest}', 0o644)
+    # Add keymap
+    if keymap is not None:
+        logger.info("Adding keymap as %s", keymap[1])
+        initramfs.add_file(*keymap, mode=0o644)
+        with open(keymap[0], 'rb') as bkeymap:
+            if bkeymap.read(len(BINARY_KEYMAP_MAGIC)) != BINARY_KEYMAP_MAGIC:
+                logger.error("Binary keymap %s: bad file format", keymap[0])
 
-    # Busybox
-    logger.info("Installing busybox")
+    # Add /init
+    logger.info("Adding init script")
+    initramfs.add_file(init, "/init", mode=0o755)
+
+    # Add busybox
+    logger.info("Adding busybox")
     busybox = findexec('busybox')
-    copyfile(busybox)
+    initramfs.add_file(busybox)
     for applet in busybox_get_applets(busybox):
-        copyfile(busybox, applet, deps=False, conflict_ignore=True)
-
-    # Hardlink duplicate files
-    logger.info("Hardlinking duplicates")
-    hardlink_duplicates()
-
-    # Create initramfs
-    logger.info("Building CPIO archive %s", output)
-    if output == "-":
-        mkcpio(sys.stdout.buffer)
-    else:
-        with open(output, 'wb') as cpiodest:
-            mkcpio(cpiodest)
-        logger.debug("%s bytes copied", os.path.getsize(output))
-
-    if not debug:
-        logger.info("Cleaning up temporary files")
-        cleanup()
+        try:
+            initramfs.add_file(busybox, applet, deps=False)
+        except MergeError:
+            logging.debug("Not adding applet %s: file exists", applet)
 
 
-def entry_point() -> None:
-    """Main entry point"""
-    parser = argparse.ArgumentParser(description="Build an initramfs.")
-    parser.add_argument(
-        "--debug", "-d", action="store_true", default=False,
-        help="debugging mode: non-root, does not cleanup the build directory"
-    )
-    parser.add_argument(
-        "--output", "-o", type=str, default=None,
-        help="set output cpio file (can be set in the config file)"
-    )
-    parser.add_argument(
-        "--clean", "-C", action="store_true", default=False,
-        help="overwrite temporary directory if it exists, use carefully"
-    )
-    parser.add_argument(
-        '--verbose', '-v', action='store_true', default=False,
-        help="be verbose",
-    )
-    parser.add_argument(
-        '--quiet', '-q', action='count', default=0,
-        help="be quiet (can be repeated)",
-    )
-    args = parser.parse_args()
+def keymap_build(src: str, dest: IO[bytes]) -> None:
+    """Generate a binary keymap from a keymap name
 
-    if args.verbose:
-        level = logging.DEBUG
-    elif args.quiet >= 3:
-        level = logging.CRITICAL
-    elif args.quiet >= 2:
-        level = logging.ERROR
-    elif args.quiet >= 1:
-        level = logging.WARNING
-    else:
-        level = logging.INFO
-    logging.getLogger().setLevel(level)
+    This keymap can then be loaded with ``loadkmap`` from the initramfs
+    environment.
 
-    config = util.read_config()
-    if config['build_dir'] is not None:
-        global DESTDIR
-        DESTDIR = config['build_dir']
-    mkinitramfs(
-        # init_str
-        mkinit.mkinit(
-            root=config['root'], mounts=config['mounts'],
-            keymap=(None if config['keymap_src'] is None
-                    else '' if config['keymap_dest'] is None
-                    else config['keymap_dest']),
-            init=config['init']
-        ),
-        # args from config
-        files=config['files'],
-        execs=config['execs'],
-        libs=config['libs'],
-        keymap_src=config['keymap_src'],
-        keymap_dest=config['keymap_dest'],
-        # args from cmdline
-        output=(args.output if args.output is not None else config['output']),
-        force_cleanup=args.clean,
-        debug=args.debug,
-    )
+    :param src: Name of the keymap to convert, can be a keyboard layout name
+        or a file path
+    :param dest: Destination stream to write into
+    :raises subprocess.CalledProcessError: Error during ``loadkeys``
+    """
+    subprocess.check_call(['loadkeys', '--bkeymap', src], stdout=dest)

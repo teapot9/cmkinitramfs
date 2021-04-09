@@ -5,13 +5,6 @@ mkramfs
 .. automodule:: cmkinitramfs.mkramfs
    :platform: Linux
 
-.. autodata:: DESTDIR
-   :annotation:
-
-.. autofunction:: mklayout
-
-.. autofunction:: copyfile
-
 .. autofunction:: findlib
 
 .. autofunction:: findexec
@@ -20,15 +13,43 @@ mkramfs
 
 .. autofunction:: busybox_get_applets
 
-.. autofunction:: mkcpio
+.. autofunction:: mkcpio_from_dir
 
-.. autofunction:: cleanup
+.. autofunction:: mkcpio_from_list
 
 .. autofunction:: hash_file
 
-.. autofunction:: find_duplicates
+.. autoexception:: MergeError
+   :show-inheritance:
 
-.. autofunction:: hardlink_duplicates
+.. autoclass:: Item
+   :members: merge, build_to_cpio_list, build_to_directory
+   :special-members: __iter__, __contains__
+   :show-inheritance:
+
+.. autoclass:: File
+   :show-inheritance:
+
+.. autoclass:: Directory
+   :show-inheritance:
+
+.. autoclass:: Node
+   :show-inheritance:
+
+.. autoclass:: Symlink
+   :show-inheritance:
+
+.. autoclass:: Pipe
+   :show-inheritance:
+
+.. autoclass:: Socket
+   :show-inheritance:
+
+.. autoclass:: Initramfs
+   :members: add_item, add_file, build_to_cpio_list, build_to_directory
+   :show-inheritance:
 
 .. autofunction:: mkinitramfs
+
+.. autofunction:: keymap_build
 

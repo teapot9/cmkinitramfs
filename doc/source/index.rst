@@ -9,7 +9,7 @@ Table of contents
 
    mkinit
    mkramfs
-   util
+   entry
 
 
 Indices and tables

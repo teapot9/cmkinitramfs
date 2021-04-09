@@ -16,7 +16,7 @@ the init script.
 
 import os.path
 from shlex import quote
-from typing import List, Optional, Set, Tuple
+from typing import Iterable, List, Optional, Set, Tuple
 
 
 def _fun_rescue_shell() -> str:
@@ -176,7 +176,7 @@ def do_switch_root(init: str, newroot: 'Data') -> str:
     )
 
 
-class Data(object):
+class Data:
     """Base class representing any data on the system
 
     This is an abstract class representing data on the system.
@@ -643,7 +643,7 @@ class MountData(Data):
 class MdData(Data):
     """MD RAID
 
-    :type sources: List[:class:`Data`]
+    :type sources: FrozenSet[:class:`Data`]
     :param sources: :class:`Data` to use as sources (e.g. /dev/sda1 and
         /dev/sdb1; or UUID=foo).
     :type name: str
@@ -651,10 +651,10 @@ class MdData(Data):
     :raises ValueError: No :class:`Data` source
     """
 
-    def __init__(self, sources: List[Data], name: str):
+    def __init__(self, sources: Iterable[Data], name: str):
         super().__init__()
         self.execs.add(('mdadm', None))
-        self.sources = sources
+        self.sources = frozenset(sources)
         self.name = name
         if not self.sources:
             raise ValueError(f"{self} has no source defined")
@@ -726,14 +726,13 @@ class CloneData(Data):
         return self.dest.path()
 
 
-def mkinit(root: Data, mounts: Optional[Set[Data]] = None,
+def mkinit(root: Data, mounts: Optional[Iterable[Data]] = None,
            keymap: Optional[str] = None, init: Optional[str] = None) -> str:
     """Create the init script
 
     :param root: :class:`Data` to use as rootfs
     :param mounts: :class:`Data` needed in addition of rootfs
     :param keymap: Path of the keymap to load, :data:`None` means no keymap
-        loaded, an empty string will load the default ``/root/keymap.bmap``
     :param init: Init script to use, defaults to ``/sbin/init``
     """
     if mounts is None:
@@ -743,26 +742,10 @@ def mkinit(root: Data, mounts: Optional[Set[Data]] = None,
 
     script = [do_header(), do_init(), do_cmdline()]
     if keymap is not None:
-        script.append(do_keymap(
-            keymap if keymap else '/root/keymap.bmap'
-        ))
+        script.append(do_keymap(keymap))
     script.append(root.load())
     script.append(do_maintenance())
     for mount in mounts:
         script.append(mount.load())
     script.append(do_switch_root(init, root))
     return ''.join(script)
-
-
-def entry_point() -> None:
-    """Main entry point of the module"""
-    from cmkinitramfs.util import read_config
-
-    config = read_config()
-    print(mkinit(
-        root=config['root'], mounts=config['mounts'],
-        keymap=(None if config['keymap_src'] is None
-                else '' if config['keymap_dest'] is None
-                else config['keymap_dest']),
-        init=config['init']
-    ))
