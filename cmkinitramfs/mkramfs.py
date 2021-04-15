@@ -97,7 +97,7 @@ def parse_ld_so_conf_iter(conf_path: str = '/etc/ld.so.conf') -> Iterator[str]:
                 yield line
 
 
-@functools.lru_cache
+@functools.lru_cache()
 def parse_ld_so_conf_tuple(conf_path: str = '/etc/ld.so.conf') \
         -> Tuple[str, ...]:
     """Parse a ldso config file
@@ -110,7 +110,7 @@ def parse_ld_so_conf_tuple(conf_path: str = '/etc/ld.so.conf') \
     return tuple(parse_ld_so_conf_iter(conf_path))
 
 
-@functools.lru_cache
+@functools.lru_cache()
 def _get_default_libdirs() -> Tuple[str, ...]:
     """Get the default library directories"""
     libdirs = []
@@ -121,7 +121,7 @@ def _get_default_libdirs() -> Tuple[str, ...]:
     return tuple(libdirs)
 
 
-@functools.lru_cache
+@functools.lru_cache()
 def _get_libdir(arch: int) -> str:
     """Get the libdir corresponding to a binary class
 
@@ -273,7 +273,7 @@ def find_elf_deps_iter(src: str) -> Iterator[Tuple[str, str]]:
     logger.debug("Found all ELF dependencies for %s", src)
 
 
-@functools.lru_cache
+@functools.lru_cache()
 def find_elf_deps_set(src: str) -> FrozenSet[Tuple[str, str]]:
     """Find dependencies of an ELF file
 
@@ -411,7 +411,7 @@ def mkcpio_from_list(src: str, dest: IO[bytes]) -> None:
     subprocess.check_call(['gen_init_cpio', src], stdout=dest)
 
 
-@functools.lru_cache
+@functools.lru_cache()
 def hash_file(filepath: str, chunk_size: int = 65536) -> bytes:
     """Calculate the SHA512 of a file
 
@@ -884,7 +884,7 @@ class Initramfs:
                            "%s", path)
         return path
 
-    @functools.lru_cache
+    @functools.lru_cache()
     def add_file(self, src: str, dest: Optional[str] = None,
                  mode: Optional[int] = None) -> None:
         """Add a file to the initramfs
