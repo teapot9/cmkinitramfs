@@ -14,6 +14,8 @@ The "init script string" returned by some methods should be appended to
 the init script.
 """
 
+from __future__ import annotations
+
 import os.path
 from shlex import quote
 from typing import Iterable, List, Optional, Set, Tuple
@@ -153,7 +155,7 @@ def do_maintenance() -> str:
     )
 
 
-def do_switch_root(init: str, newroot: 'Data') -> str:
+def do_switch_root(init: str, newroot: Data) -> str:
     """Cleanup and switch root
 
       - Set kernel log level back to boot-time default
@@ -210,9 +212,9 @@ class Data:
         self.files: Set[Tuple[str, Optional[str]]] = set()
         self.execs: Set[Tuple[str, Optional[str]]] = set()
         self.libs: Set[Tuple[str, Optional[str]]] = set()
-        self._need: List['Data'] = []
-        self._lneed: List['Data'] = []
-        self._needed_by: List['Data'] = []
+        self._need: List[Data] = []
+        self._lneed: List[Data] = []
+        self._needed_by: List[Data] = []
         self._is_final = False
         self._is_loaded = False
 
@@ -262,12 +264,12 @@ class Data:
         for k in self._need:
             k.set_final()
 
-    def add_dep(self, dep: 'Data') -> None:
+    def add_dep(self, dep: Data) -> None:
         """Add a :class:`Data` object to the hard dependencies"""
         self._need.append(dep)
         dep._needed_by.append(self)
 
-    def add_load_dep(self, dep: 'Data') -> None:
+    def add_load_dep(self, dep: Data) -> None:
         """Add a :class:`Data` object to the loading dependencies"""
         self._lneed.append(dep)
         dep._needed_by.append(self)

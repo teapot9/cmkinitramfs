@@ -17,6 +17,8 @@ and :func:`find_elf_deps_set` to list libraries needed by an ELF executable).
 The main function is :func:`mkinitramfs` to build the complete initramfs.
 """
 
+from __future__ import annotations
+
 import functools
 import glob
 import hashlib
@@ -433,7 +435,7 @@ class MergeError(Exception):
 class Item(ABC):
     """An object within the initramfs"""
 
-    def is_mergeable(self, other: 'Item') -> bool:
+    def is_mergeable(self, other: Item) -> bool:
         """Check if two items can be merged together
 
         By default, two items can only be merged if they are equal.
@@ -444,7 +446,7 @@ class Item(ABC):
         """
         return self == other
 
-    def merge(self, other: 'Item') -> None:
+    def merge(self, other: Item) -> None:
         """Merge two items together
 
         Default merge is just a no-op. Subclasses can override this
@@ -520,7 +522,7 @@ class File(Item):
     def __str__(self) -> str:
         return f"file from {self.src}"
 
-    def is_mergeable(self, other: 'Item') -> bool:
+    def is_mergeable(self, other: Item) -> bool:
         return isinstance(other, File) \
                 and self.data_hash == other.data_hash \
                 and self.mode == other.mode \
@@ -609,7 +611,7 @@ class Node(Item):
     user: int
     group: int
     dest: str
-    nodetype: 'Node.NodeType'
+    nodetype: Node.NodeType
     major: int
     minor: int
 

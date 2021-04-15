@@ -1,5 +1,7 @@
 """Entry point module for cmkinitramfs"""
 
+from __future__ import annotations
+
 import argparse
 import configparser
 import logging
@@ -51,8 +53,8 @@ class Config:
     :param cmkcpiodir_opts: Default options for cmkcpiodir
     :param cmkcpiolist_opts: Default options for cmkcpiolist
     """
-    root: 'mkinit.Data'
-    mounts: FrozenSet['mkinit.Data']
+    root: mkinit.Data
+    mounts: FrozenSet[mkinit.Data]
     keymap: Optional[Tuple[str, str, str]]
     init: str
     files: FrozenSet[Tuple[str, Optional[str]]]
@@ -72,7 +74,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     :return: Configuration dictionnary, described by :class:`Config`
     """
 
-    def find_data(data_str: str) -> 'mkinit.Data':
+    def find_data(data_str: str) -> mkinit.Data:
         """Find a Data object from a data string"""
         if data_str[:5] == 'UUID=':
             if data_dic.get(data_str[5:]) is None:
@@ -86,7 +88,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
             return data_dic[data_str[5:]]
         return data_dic[data_str]
 
-    def find_data_opt(data_str: Optional[str]) -> Optional['mkinit.Data']:
+    def find_data_opt(data_str: Optional[str]) -> Optional[mkinit.Data]:
         """find_data, returns None if data_str is None"""
         if data_str is not None:
             return find_data(data_str)
@@ -99,7 +101,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     config.read(config_file)
 
     # Get all data sources in data_dic
-    data_dic: Dict[str, 'mkinit.Data'] = {}
+    data_dic: Dict[str, mkinit.Data] = {}
     for data_id in config.sections():
         data_config = config[data_id]
         if data_config['type'] == 'luks':
