@@ -41,6 +41,14 @@ Python dependencies:
    - ``sphinx``
    - ``sphinx_rtd_theme``
 
+ - Tests:
+
+   - QA:
+
+     - ``flake8``
+     - ``mypy``
+     - ``tox``
+
 Other dependencies:
 
  - mkramfs (mkcpiodir and mkcpiolist) dependencies:

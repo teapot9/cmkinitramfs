@@ -14,13 +14,15 @@ setuptools.setup(
 
     author=__author__,
     author_email=__email__,
-    license=__license__,
     url=__url__,
+    license=__license__,
+    license_files=['LICENSE.txt'],
 
-    python_requires='>=3.6, <4',
+    python_requires='>=3.7, <4',
     install_requires=['pyelftools'],
     extras_require={
         'doc': ['sphinx', 'sphinx_rtd_theme'],
+        'qa': ['flake8', 'mypy', 'tox'],
     },
 
     packages=['cmkinitramfs'],
@@ -50,4 +52,5 @@ setuptools.setup(
         "Topic :: Utilities",
     ],
     keywords=['initramfs', 'initramfs-generator'],
+    platforms=['Linux'],
 )
