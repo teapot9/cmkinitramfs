@@ -479,6 +479,49 @@ class Item(ABC):
         """
         return False
 
+    @staticmethod
+    def build_from_cpio_list(data: str) -> Item:
+        """Build an Item from a string
+
+        This string should respect the format of ``gen_init_cpio``.
+
+        :param data: String to parse
+        :return: Item corresponding to ``data``
+        :raises ValueError: Invalid string
+        """
+        parts = data.split()
+        if parts[0] == 'file' and len(parts) >= 6:
+            return File(
+                int(parts[3], base=8), int(parts[4]), int(parts[5]),
+                set(parts[6:] + [parts[1]]), parts[2], hash_file(parts[2])
+            )
+        if parts[0] == 'dir' and len(parts) == 5:
+            return Directory(
+                int(parts[2], base=8), int(parts[3]), int(parts[4]), parts[1]
+            )
+        if parts[0] == 'nod' and len(parts) == 8:
+            return Node(
+                int(parts[2], base=8), int(parts[3]), int(parts[4]), parts[1],
+                Node.NodeType(parts[5]), int(parts[6]), int(parts[7])
+            )
+        if parts[0] == 'slink' and len(parts) == 6:
+            return Symlink(
+                int(parts[3], base=8), int(parts[4]), int(parts[5]),
+                parts[1], parts[2]
+            )
+        if parts[0] == 'pipe' and len(parts) == 5:
+            return Pipe(
+                int(parts[2], base=8), int(parts[3]), int(parts[4]), parts[1]
+            )
+        if parts[0] == 'sock' and len(parts) == 5:
+            return Socket(
+                int(parts[2], base=8), int(parts[3]), int(parts[4]), parts[1]
+            )
+        if parts[0] in ('file', 'dir', 'nod', 'slink', 'pipe', 'sock'):
+            raise ValueError(f"Invalid format for {parts[0]}: {parts[1:]}")
+        else:
+            raise ValueError(f"Unknown type: {parts[0]}")
+
     @abstractmethod
     def build_to_cpio_list(self) -> str:
         """String representing the item

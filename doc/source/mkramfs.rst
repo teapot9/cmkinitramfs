@@ -39,7 +39,8 @@ mkramfs
    :show-inheritance:
 
 .. autoclass:: Item
-   :members: is_mergeable, merge, build_to_cpio_list, build_to_directory
+   :members: is_mergeable, merge, build_from_cpio_list,
+      build_to_cpio_list, build_to_directory
    :special-members: __iter__, __contains__
    :show-inheritance:
 
