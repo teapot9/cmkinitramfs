@@ -891,12 +891,11 @@ class Initramfs:
 
         If the file is a symlink, it is dereferenced.
         If it is a dynamically linked ELF file, its dependencies
-        are also added (if ``deps`` is :data:`True`).
+        are also added.
 
         :param src: Absolute or relative path of the source file
         :param dest: Absolute path of the destination, relative to the
             initramfs root, defaults to ``src``
-        :param deps: Add needed dependencies (ELF)
         :param mode: File permissions to use, defaults to same as ``src``
         :raises FileNotFoundError: Source file or ELF dependency not found
         :raises MergeError: Destination file exists and is different,
