@@ -5,11 +5,27 @@ mkramfs
 .. automodule:: cmkinitramfs.mkramfs
    :platform: Linux
 
+.. autofunction:: parse_ld_path
+
+.. autofunction:: parse_ld_so_conf_iter
+
+.. autofunction:: parse_ld_so_conf_tuple
+
+.. autofunction:: _get_default_libdirs
+
+.. autofunction:: _get_libdir
+
+.. autofunction:: _is_elf_compatible
+
+.. autofunction:: _find_elf_deps_iter
+
+.. autofunction:: find_elf_deps_iter
+
+.. autofunction:: find_elf_deps_set
+
 .. autofunction:: findlib
 
 .. autofunction:: findexec
-
-.. autofunction:: find_elf_deps
 
 .. autofunction:: busybox_get_applets
 
@@ -23,7 +39,7 @@ mkramfs
    :show-inheritance:
 
 .. autoclass:: Item
-   :members: merge, build_to_cpio_list, build_to_directory
+   :members: is_mergeable, merge, build_to_cpio_list, build_to_directory
    :special-members: __iter__, __contains__
    :show-inheritance:
 
@@ -47,6 +63,7 @@ mkramfs
 
 .. autoclass:: Initramfs
    :members: add_item, add_file, build_to_cpio_list, build_to_directory
+   :special-members: __iter__, __contains__
    :show-inheritance:
 
 .. autofunction:: mkinitramfs

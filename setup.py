@@ -18,7 +18,7 @@ setuptools.setup(
     url=__url__,
 
     python_requires='>=3.6, <4',
-    install_requires=[],
+    install_requires=['pyelftools'],
     extras_require={
         'doc': ['sphinx', 'sphinx_rtd_theme'],
     },

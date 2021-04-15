@@ -11,66 +11,327 @@ Each file type of the initramfs has an :class:`Item` subclass. Those classes
 provide methods used by :class:`Initramfs` generation methods.
 
 This library also provides utilities like :func:`findexec`.
-Multiple helper functions are also available (e.g. :func:`find_elf_deps` to
-list libraries needed by an ELF executable).
+Multiple helper functions are also available (e.g. :func:`find_elf_deps_iter`
+and :func:`find_elf_deps_set` to list libraries needed by an ELF executable).
 
 The main function is :func:`mkinitramfs` to build the complete initramfs.
 """
 
+import functools
 import glob
 import hashlib
+import itertools
 import logging
 import os
 import shutil
 import socket
 import stat
 import subprocess
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import IO, Iterable, Iterator, List, Optional, Set, Tuple
+from typing import (FrozenSet, IO, Iterable, Iterator, List, Optional, Set,
+                    Tuple)
+
+from elftools.common.exceptions import ELFError
+from elftools.elf.elffile import ELFFile
+from elftools.elf.enums import ENUM_DT_FLAGS_1
 
 logger = logging.getLogger(__name__)
 BINARY_KEYMAP_MAGIC = b'bkeymap'
 
 
-def findlib(lib: str) -> str:
+def parse_ld_path(ld_path: Optional[str] = None, origin: str = '') \
+        -> Iterator[str]:
+    """Parse a colon-delimited list of paths and apply ldso rules
+
+    Note the special handling as dictated by the ldso:
+     - Empty paths are equivalent to $PWD
+     - $ORIGIN is expanded to the path of the given file, ``origin``
+
+    :param ld_path: Colon-delimited string of paths, defaults to the
+        ``LD_LIBRARY_PATH`` environment variable
+    :param origin: Directory containing the ELF file being parsed
+        (used for $ORIGIN), defaults to an empty string
+    :return: Iterator over the processed paths
+    """
+
+    if ld_path is None:
+        ld_path = os.environ.get('LD_LIBRARY_PATH')
+        if ld_path is None:
+            return
+    logger.debug("Parsing ld_path %s", ld_path)
+
+    for path in ld_path.split(':'):
+        if not path:
+            yield os.getcwd()
+        else:
+            for k in (('$ORIGIN', origin), ('${ORIGIN}', origin)):
+                path = path.replace(*k)
+            yield path
+
+
+def parse_ld_so_conf_iter(conf_path: str = '/etc/ld.so.conf') -> Iterator[str]:
+    """Parse a ldso config file
+
+    This should handle comments, whitespace, and "include" statements.
+
+    :param conf_path: Path of the ldso config file to parse
+    :return: Iterator over the processed paths
+    """
+    logger.debug("Parsing ld.so.conf %s", conf_path)
+
+    with open(conf_path, 'r') as conf_file:
+        for line in conf_file:
+            line = line.split('#', 1)[0].strip()
+            if not line:
+                continue
+            if line.startswith('include '):
+                line = line[8:]
+                if line[0] != '/':
+                    line = os.path.dirname(conf_path) + '/' + line
+                for path in sorted(glob.glob(line)):
+                    yield from parse_ld_so_conf_iter(path)
+            else:
+                yield line
+
+
+@functools.lru_cache
+def parse_ld_so_conf_tuple(conf_path: str = '/etc/ld.so.conf') \
+        -> Tuple[str, ...]:
+    """Parse a ldso config file
+
+    Cached version of :func:`parse_ld_so_conf_iter`, returning a tuple.
+
+    :param conf_path: Path of the ldso config file to parse
+    :return: Tuple with the processed paths
+    """
+    return tuple(parse_ld_so_conf_iter(conf_path))
+
+
+@functools.lru_cache
+def _get_default_libdirs() -> Tuple[str, ...]:
+    """Get the default library directories"""
+    libdirs = []
+    for lib in ('lib64', 'lib', 'lib32'):
+        for prefix in ('/', '/usr/'):
+            if os.path.exists(prefix + lib):
+                libdirs.append(prefix + lib)
+    return tuple(libdirs)
+
+
+@functools.lru_cache
+def _get_libdir(arch: int) -> str:
+    """Get the libdir corresponding to a binary class
+
+    :param arch: Binary class (e.g. :data:`32` or :data:`64`)
+    """
+    if arch == 64 and os.path.exists('/lib64'):
+        return '/lib64'
+    if arch == 32 and os.path.exists('/lib32'):
+        return '/lib32'
+    return '/lib'
+
+
+def _is_elf_compatible(elf1: ELFFile, elf2: ELFFile) -> bool:
+    """See if two ELFs are compatible
+
+    This compares the aspects of the ELF to see if they're compatible:
+    bit size, endianness, machine type, and operating system.
+
+    :param elf1: First ELF object
+    :param elf2: Second ELF object
+    :return: :data:`True` if compatible, :data:`False` otherwise
+    """
+
+    osabis = frozenset([e.header['e_ident']['EI_OSABI'] for e in (elf1, elf2)])
+    compat_sets = (frozenset(
+        'ELFOSABI_%s' % x for x in ('NONE', 'SYSV', 'GNU', 'LINUX',)
+    ),)
+    return (
+        (len(osabis) == 1 or any(osabis.issubset(x) for x in compat_sets)) and
+        elf1.elfclass == elf2.elfclass and
+        elf1.little_endian == elf2.little_endian and
+        elf1.header['e_machine'] == elf2.header['e_machine']
+    )
+
+
+def _find_elf_deps_iter(elf: ELFFile, origin: str) \
+        -> Iterator[Tuple[str, str]]:
+    """Iterates over the dependencies of an ELF file
+
+    Backend of :func:`find_elf_deps_iter`.
+
+    :param elf: Elf file to parse
+    :param origin: Directory containing the ELF binary (real path as provided
+        by :func:`os.path.realpath`, used for $ORIGIN)
+    :return: Same as :func:`find_elf_deps_iter`
+    :raises FileNotFoundError: Dependency not found
+    """
+    deps: List[str] = []
+    rpaths: List[str] = []
+    runpaths: List[str] = []
+    nodeflib = False
+
+    # Read ELF segments
+    for segment in elf.iter_segments():
+        if segment.header.p_type == 'PT_INTERP':
+            interp = segment.get_interp_name()
+            logger.debug("INTERP: %s", interp)
+            deps.append(interp)
+        elif segment.header.p_type == 'PT_DYNAMIC':
+            for tag in segment.iter_tags():
+                if tag.entry.d_tag == 'DT_RPATH':
+                    rpaths.extend(parse_ld_path(tag.rpath, origin))
+                elif tag.entry.d_tag == 'DT_RUNPATH':
+                    runpaths.extend(parse_ld_path(tag.runpath, origin))
+                elif tag.entry.d_tag == 'DT_NEEDED':
+                    deps.append(tag.needed)
+                elif tag.entry.d_tag == 'DT_FLAGS_1':
+                    if tag.entry.d_val & ENUM_DT_FLAGS_1['DF_1_NODEFLIB']:
+                        nodeflib = True
+
+    logger.debug("ELF: deps: %s, rpaths: %s, runpaths: %s, nodeflib: %s",
+                 deps, rpaths, runpaths, nodeflib)
+
+    # Directories in which dependencies will be searched
+    search_paths = tuple(itertools.chain(
+        rpaths, parse_ld_path(None, origin), runpaths,
+        parse_ld_so_conf_tuple(), _get_default_libdirs()
+    ))
+
+    for dep in deps:
+
+        # No need to search an absolute dependency
+        if os.path.isabs(dep):
+            logger.debug("Dependency is absolute: %s", dep)
+            yield dep, dep
+            continue
+
+        for found_dir in search_paths:
+            found_path = os.path.join(found_dir, dep)
+
+            # Check found_path is valid and compatible
+            if not os.path.exists(found_path):
+                continue
+            if nodeflib and found_dir in _get_default_libdirs():
+                continue
+            with open(found_path, 'rb') as found_file:
+                try:
+                    found_elf = ELFFile(found_file)
+                except ELFError:
+                    continue
+                if not _is_elf_compatible(elf, found_elf):
+                    continue
+                found_arch = found_elf.elfclass
+
+            # Lib found
+            logger.debug("Found %s in %s", dep, found_dir)
+            if found_dir in itertools.chain(rpaths, runpaths):
+                # Libdir in R*PATH: use the same path
+                yield found_path, found_path
+            else:
+                # Libdir in ld_path or ld.so.conf: use default libdir
+                yield found_path, os.path.join(_get_libdir(found_arch), dep)
+            break
+        else:
+            raise FileNotFoundError(f"ELF dependency not found: {dep}")
+
+
+def find_elf_deps_iter(src: str) -> Iterator[Tuple[str, str]]:
+    """Iterates over the dependencies of an ELF file
+
+    Read an ELF file to search dynamic library dependencies. For each
+    dependency, find it on the system (using RPATH, LD_LIBRARY_PATH,
+    RUNPATH, ld.so.conf, and default library directories).
+
+    If the library is in a path encoded in the ELF binary (RPATH or RUNPATH),
+    ``dep_dest = dep_src``, otherwise use a default library directory
+    according to the type of binary (``/lib``, ``/lib64``, ``/lib32``).
+
+    If the file is not an ELF file, returns an empty iterator.
+
+    :param src: File to find dependencies for
+    :return: Iterator of ``(dep_src, dep_dest)``, with ``dep_src`` the path
+        of the dependency on the current system, and ``dep_dest`` the
+        path of the dependency on the initramfs
+    :raises FileNotFoundError: Dependency not found
+    """
+    logger.debug("Searching ELF dependencies for %s", src)
+
+    if src != os.path.realpath(src):
+        yield from find_elf_deps_iter(os.path.realpath(src))
+        return
+
+    with open(src, 'rb') as src_file:
+        try:
+            elf = ELFFile(src_file)
+        except ELFError:
+            return
+        yield from _find_elf_deps_iter(elf, os.path.dirname(src))
+    logger.debug("Found all ELF dependencies for %s", src)
+
+
+@functools.lru_cache
+def find_elf_deps_set(src: str) -> FrozenSet[Tuple[str, str]]:
+    """Find dependencies of an ELF file
+
+    Cached version of :func:`find_elf_deps_iter`.
+
+    :param src: File to find dependencies for
+    :return: Set of ``(dep_src, dep_dest)``, see :func:`find_elf_deps_iter`.
+    :raises FileNotFoundError: Dependency not found
+    """
+    if src != os.path.realpath(src):
+        return find_elf_deps_set(os.path.realpath(src))
+    return frozenset(find_elf_deps_iter(src))
+
+
+def findlib(lib: str, compat: str = sys.executable) -> Tuple[str, str]:
     """Search a library in the system
 
-    Uses ``/etc/ld.so.conf``, ``/etc/ld.so.conf.d/*.conf``
-    and the ``LD_LIBRARY_PATH`` environment variable.
+    Uses ``ld.so.conf`` and ``LD_LIBRARY_PATH``.
 
-    :param lib: Library to search
-    :return: Absolute path of the library
+    Libraries will be installed in the default library directory in the
+    initramfs.
+
+    :param lib: Library to search (e.g. ``libgcc_s.so.1``)
+    :param compat: Path to a binary that the library must be compatible with
+        (checked with :func:`_is_elf_compatible`),
+        defaults to :data:`sys.executable`
+    :return: ``(lib_src, lib_dest)``, with ``lib_src`` the absolute path
+        of the library on the current system, and ``lib_dest`` the absolute
+        path of the library on the initramfs
     :raises FileNotFoundError: Library not found
     """
     logger.debug("Searching library %s", lib)
+    libname = os.path.basename(lib)
+    with open(compat, 'rb') as pyexec:
+        pyelf = ELFFile(pyexec)
 
-    if os.path.isfile(lib):
-        return lib
+        if os.path.isfile(lib):
+            return lib, os.path.join(_get_libdir(pyelf.elfclass), libname)
 
-    # Get list of directories to search
-    libdirs = []
-    if os.environ.get('LD_LIBRARY_PATH') is not None:
-        for k in os.environ['LD_LIBRARY_PATH'].split(':'):
-            if k:
-                libdirs.append(k)
+        search_paths = itertools.chain(
+            parse_ld_path(), parse_ld_so_conf_tuple(),
+            _get_default_libdirs()
+        )
+        for found_dir in search_paths:
+            found_path = os.path.join(found_dir, libname)
 
-    # List files in /etc/ld.so.conf and /etc/ld.so.conf.d/*.conf
-    dirlists = glob.glob("/etc/ld.so.conf") \
-        + glob.glob("/etc/ld.so.conf.d/*.conf")
+            if not os.path.exists(found_path):
+                continue
+            with open(found_path, 'rb') as found_stream:
+                try:
+                    found_elf = ELFFile(found_stream)
+                except ELFError:
+                    continue
+                if not _is_elf_compatible(pyelf, found_elf):
+                    continue
+                found_arch = found_elf.elfclass
+            return found_path, os.path.join(_get_libdir(found_arch), libname)
 
-    # For each file, add listed directories to libdirs
-    for dirlist in dirlists:
-        with open(dirlist, "r", encoding="utf8") as file_dirlist:
-            for line in file_dirlist:
-                if os.path.exists(line.strip()):
-                    libdirs.append(line.strip())
-
-    # Parse directories
-    for libdir in libdirs:
-        if os.path.isfile(f"{libdir}/{lib}"):
-            return f"{libdir}/{lib}"
     raise FileNotFoundError(lib)
 
 
@@ -100,30 +361,6 @@ def findexec(executable: str) -> str:
         if os.path.isfile(f"{execdir}/{executable}"):
             return f"{execdir}/{executable}"
     raise FileNotFoundError(executable)
-
-
-def find_elf_deps(src: str) -> Iterator[str]:
-    """Find dependencies of an ELF file
-
-    If the file is not an ELF file or has no dependency,
-    nothing is yielded. This will not cause any error.
-
-    :param src: File to find dependencies for
-    :return: Iterator of absolute paths of the dependencies
-    :raises subprocess.CalledProcessError: Error during ``lddtree``
-    """
-    logger.debug("Parsing ELF deps for %s", src)
-
-    src = os.path.abspath(src)
-    cmd = ["lddtree", "--list", "--skip-non-elfs", src]
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            fname = os.path.abspath(line.decode().strip())
-            if fname != src:
-                yield fname
-        if proc.wait() != 0:
-            raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
 
 def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
@@ -174,6 +411,7 @@ def mkcpio_from_list(src: str, dest: IO[bytes]) -> None:
     subprocess.check_call(['gen_init_cpio', src], stdout=dest)
 
 
+@functools.lru_cache
 def hash_file(filepath: str, chunk_size: int = 65536) -> bytes:
     """Calculate the SHA512 of a file
 
@@ -195,17 +433,27 @@ class MergeError(Exception):
 class Item(ABC):
     """An object within the initramfs"""
 
+    def is_mergeable(self, other: 'Item') -> bool:
+        """Check if two items can be merged together
+
+        By default, two items can only be merged if they are equal.
+
+        :param other: :class:`Item` to merge into ``self``
+        :return: :data:`True` if the items can be merged,
+            :data:`False` otherwise
+        """
+        return self == other
+
     def merge(self, other: 'Item') -> None:
         """Merge two items together
 
-        By default, two items can only be merged if they are equal.
         Default merge is just a no-op. Subclasses can override this
         as done by :class:`File` to handle hardlink of identical files.
 
         :param other: :class:`Item` to merge into ``self``
         :raises MergeError: Cannot merge the items
         """
-        if self != other:
+        if not self.is_mergeable(other):
             raise MergeError(f"Different items: {self} != {other}")
 
     def __iter__(self) -> Iterator[str]:
@@ -272,12 +520,16 @@ class File(Item):
     def __str__(self) -> str:
         return f"file from {self.src}"
 
-    def merge(self, other: Item) -> None:
-        if isinstance(other, File) \
+    def is_mergeable(self, other: 'Item') -> bool:
+        return isinstance(other, File) \
                 and self.data_hash == other.data_hash \
                 and self.mode == other.mode \
                 and self.user == other.user \
-                and self.group == other.group:
+                and self.group == other.group
+
+    def merge(self, other: Item) -> None:
+        if self.is_mergeable(other):
+            assert isinstance(other, File)
             self.dests |= other.dests
         else:
             raise MergeError(f"Different files: {self} and {other}")
@@ -291,7 +543,7 @@ class File(Item):
     def build_to_cpio_list(self) -> str:
         dests = iter(sorted(self.dests))
         return f'file {next(dests)} {self.src} ' \
-            + f'{self.mode:03o} {self.user} {self.mode}' \
+            + f'{self.mode:03o} {self.user} {self.group}' \
             + (' ' if len(self.dests) > 1 else '') \
             + ' '.join(dests)
 
@@ -554,6 +806,18 @@ class Initramfs:
         """Iterate over the :class:`Item` instances in the initramfs"""
         return iter(self.items)
 
+    def __contains__(self, path: str) -> bool:
+        """Check if a path exists on the initramfs
+
+        :param path: Path to check
+        :return: :data:`True` if ``path`` exists on the initramfs,
+            :data:`False` otherwise
+        """
+        for item in self:
+            if path in item:
+                return True
+        return False
+
     def add_item(self, new_item: Item) -> None:
         """Add an item to the initramfs
 
@@ -564,18 +828,19 @@ class Initramfs:
             (missing parent directory or file conflict)
         """
 
+        mergeable = None
         for cur_item in self:
-            # Check if the item can be merged with any existing item
-            try:
-                cur_item.merge(new_item)
-                break
-            except MergeError as error:
-                for dest in cur_item:
-                    if dest in new_item:
-                        raise MergeError(
-                            f"File collision bewteen {new_item} and {cur_item}"
-                        ) from error
+            # Check if new_item can be merged or is conflicting with cur_item
+            if cur_item.is_mergeable(new_item):
+                assert mergeable is None
+                mergeable = cur_item
+            elif any(True for k in new_item if k in cur_item):
+                raise MergeError(
+                    f"File collision between {new_item} and {cur_item}"
+                )
 
+        if mergeable is not None:
+            mergeable.merge(new_item)
         else:
             # Check if the parent directory of all destinations exists
             for dest in new_item:
@@ -586,10 +851,42 @@ class Initramfs:
                         break
                 else:
                     raise MergeError(f"Missing directory: {dirname}")
+            # Add new_item
             self.items.append(new_item)
+            logger.debug("New item: %s", new_item)
 
+    @staticmethod
+    def __normalize(path: str) -> str:
+        """Normalize a path for the initramfs filesystem
+
+        Strip /usr[/local] directory, warns if spaces are present in
+        the path.
+
+        :param path: Destination path to normalize
+        :return: Normalized path
+        :raises ValueError: Invalid path
+        """
+
+        path = os.path.normpath(path)
+        # Initramfs path must be absolute
+        if not os.path.isabs(path):
+            raise ValueError(f"{path} is not an absolute path")
+        # Strip /usr directory, not needed in initramfs
+        if "/usr/local/" in path:
+            logger.debug("Stripping /usr/local/ from %s", path)
+            path = path.replace("/usr/local", "/")
+        elif "/usr/" in path:
+            logger.debug("Stripping /usr/ from %s", path)
+            path = path.replace("/usr/", "/")
+        # Check whitespaces
+        if ' ' in path or '\t' in path or '\n' in path:
+            logger.warning("Whitespaces are not supported by gen_init_cpio: "
+                           "%s", path)
+        return path
+
+    @functools.lru_cache
     def add_file(self, src: str, dest: Optional[str] = None,
-                 deps: bool = True, mode: Optional[int] = None) -> None:
+                 mode: Optional[int] = None) -> None:
         """Add a file to the initramfs
 
         If the file is a symlink, it is dereferenced.
@@ -601,7 +898,7 @@ class Initramfs:
             initramfs root, defaults to ``src``
         :param deps: Add needed dependencies (ELF)
         :param mode: File permissions to use, defaults to same as ``src``
-        :raises FileNotFoundError: Source file not found
+        :raises FileNotFoundError: Source file or ELF dependency not found
         :raises MergeError: Destination file exists and is different,
             or missing parent directory (raised from :meth:`add_item`)
         """
@@ -614,24 +911,15 @@ class Initramfs:
         src = os.path.abspath(src)
         if not dest:
             dest = src
-        # Strip /usr directory, not needed in initramfs
-        if "/usr/local/" in dest:
-            logger.debug("Stripping /usr/local/ from %s", dest)
-            dest = dest.replace("/usr/local", "/")
-        elif "/usr/" in dest:
-            logger.debug("Stripping /usr/ from %s", dest)
-            dest = dest.replace("/usr/", "/")
-        # Check whitespaces
-        if ' ' in dest or '\t' in dest or '\n' in dest:
-            logger.warning("Whitespaces are not supported by gen_init_cpio: "
-                           "%s", dest)
-
-        # Copy dependencies
-        if deps:
-            for dep in find_elf_deps(src):
-                self.add_file(dep, deps=False)
+        dest = Initramfs.__normalize(dest)
 
         logger.debug("Adding %s as %s", src, dest)
+
+        # Copy dependencies
+        for dep_src, dep_dest in find_elf_deps_set(src):
+            self.add_file(dep_src, dep_dest)
+
+        # Add file
         if mode is None:
             mode = os.stat(src, follow_symlinks=True).st_mode & 0o7777
         self.add_item(File(mode, self.user, self.group,
@@ -705,15 +993,16 @@ def mkinitramfs(
         libs = set()
 
     # Add necessary files
-    logger.info("Adding files %s", [k[0] for k in files])
     for fsrc, fdest in files:
+        logger.info("Adding file %s", fsrc)
         initramfs.add_file(fsrc, fdest)
-    logger.info("Adding executables %s", [k[0] for k in execs])
     for fsrc, fdest in execs:
+        logger.info("Adding executable %s", fsrc)
         initramfs.add_file(findexec(fsrc), fdest)
-    logger.info("Adding libraries %s", [k[0] for k in libs])
     for fsrc, fdest in libs:
-        initramfs.add_file(findlib(fsrc), fdest)
+        logger.info("Adding library %s", fsrc)
+        lib_src, lib_dest = findlib(fsrc)
+        initramfs.add_file(lib_src, fdest if fdest is not None else lib_dest)
 
     # Add keymap
     if keymap is not None:
@@ -733,7 +1022,7 @@ def mkinitramfs(
     initramfs.add_file(busybox)
     for applet in busybox_get_applets(busybox):
         try:
-            initramfs.add_file(busybox, applet, deps=False)
+            initramfs.add_file(busybox, applet)
         except MergeError:
             logging.debug("Not adding applet %s: file exists", applet)
 

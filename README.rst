@@ -32,6 +32,10 @@ Dependencies
 
 Python dependencies:
 
+ - mkramfs (mkcpiodir and mkcpiolist) dependencies:
+
+   - ``pyelftools``
+
  - Documentation:
 
    - ``sphinx``
@@ -42,8 +46,7 @@ Other dependencies:
  - mkramfs (mkcpiodir and mkcpiolist) dependencies:
 
    - ``loadkeys`` (kbd)
-   - ``lddtree`` (pax-utils)
-   - ``busybox`` (busybox)
+   - ``busybox``
 
  - mkcpiodir dependencies:
 
