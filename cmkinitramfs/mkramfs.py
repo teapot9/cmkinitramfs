@@ -830,29 +830,29 @@ class Initramfs:
             (missing parent directory or file conflict)
         """
 
+        #: Used to check all parents directories exist and are created
+        #: before the creation/merge of new_item
+        parents = {os.path.dirname(k): False for k in new_item if k != '/'}
         mergeable = None
         for cur_item in self:
             # Check if new_item can be merged or is conflicting with cur_item
             if cur_item.is_mergeable(new_item):
                 assert mergeable is None
                 mergeable = cur_item
-            elif any(True for k in new_item if k in cur_item):
-                raise MergeError(
-                    f"File collision between {new_item} and {cur_item}"
-                )
+            for dest in new_item:
+                if cur_item is not mergeable and dest in cur_item:
+                    raise MergeError(
+                        f"File collision between {new_item} and {cur_item}"
+                    )
+                if mergeable is None and os.path.dirname(dest) in cur_item:
+                    parents[os.path.dirname(dest)] = True
 
+        if not all(parents.values()):
+            missings = tuple(k for k in parents if not parents[k])
+            raise MergeError(f"Missing directory: {missings}")
         if mergeable is not None:
             mergeable.merge(new_item)
         else:
-            # Check if the parent directory of all destinations exists
-            for dest in new_item:
-                dirname = os.path.dirname(dest)
-                for item in self:
-                    if isinstance(item, Directory) \
-                            and dirname in item:
-                        break
-                else:
-                    raise MergeError(f"Missing directory: {dirname}")
             # Add new_item
             self.items.append(new_item)
             logger.debug("New item: %s", new_item)
