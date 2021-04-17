@@ -10,7 +10,7 @@ import shlex
 import shutil
 import sys
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, Optional, Tuple
+from typing import Dict, FrozenSet, Optional, Tuple, overload
 
 import cmkinitramfs
 import cmkinitramfs.mkinit as mkinit
@@ -74,8 +74,15 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     :return: Configuration dictionnary, described by :class:`Config`
     """
 
-    def find_data(data_str: str) -> mkinit.Data:
+    @overload
+    def find_data(data_str: None) -> None: pass
+    @overload
+    def find_data(data_str: str) -> mkinit.Data: pass
+
+    def find_data(data_str: Optional[str]) -> Optional[mkinit.Data]:
         """Find a Data object from a data string"""
+        if data_str is None:
+            return None
         if data_str[:5] == 'UUID=':
             if data_dic.get(data_str[5:]) is None:
                 data_dic[data_str[5:]] = mkinit.UuidData(data_str[5:])
@@ -87,12 +94,6 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
         if data_str[:5] == 'DATA=':
             return data_dic[data_str[5:]]
         return data_dic[data_str]
-
-    def find_data_opt(data_str: Optional[str]) -> Optional[mkinit.Data]:
-        """find_data, returns None if data_str is None"""
-        if data_str is not None:
-            return find_data(data_str)
-        return None
 
     # Read config file
     config = configparser.ConfigParser()
@@ -108,8 +109,8 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
             data_dic[data_id] = mkinit.LuksData(
                 find_data(data_config['source']),
                 data_config['name'],
-                find_data_opt(data_config.get('key')),
-                find_data_opt(data_config.get('header')),
+                find_data(data_config.get('key')),
+                find_data(data_config.get('header')),
                 data_config.getboolean('discard', fallback=False),
             )
         elif data_config['type'] == 'lvm':

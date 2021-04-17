@@ -432,6 +432,7 @@ class MergeError(Exception):
     """Cannot merge an Item into another"""
 
 
+@dataclass  # type: ignore
 class Item(ABC):
     """An object within the initramfs"""
 
