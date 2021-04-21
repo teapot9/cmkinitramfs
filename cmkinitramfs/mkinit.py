@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os.path
 from shlex import quote
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import FrozenSet, Iterable, List, Optional, Set, Tuple
 
 
 def _fun_rescue_shell() -> str:
@@ -187,34 +187,34 @@ class Data:
     boot environment (e.g. root fs, usr fs), this will prevent the data
     from being unloaded.
 
-    :type files: Set[Tuple[str, Optional[str]]]
     :param files: Files directly needed in the initramfs.
         Same format as :meth:`deps_files`.
-    :type execs: Set[Tuple[str, Optional[str]]]
     :param execs: Executables directly needed in the initramfs.
         Same format as :meth:`deps_files`.
-    :type libs: Set[Tuple[str, Optional[str]]]
     :param libs: Libraries directly needed in the initramfs.
         Same format as :meth:`deps_files`.
-    :type _need: List[:class:`Data`]
     :param _need: Loading and runtime dependencies
-    :type _lneed: List[:class:`Data`]
     :param _lneed: Loading only dependencies
-    :type _needed_by: List[:class:`Data`]
     :param _needed_by: Reverse dependencies
-    :type _is_final: bool
     :param _is_final: The :class:`Data` should not be unloaded
-    :type _is_loaded: bool
     :param _is_loaded: The :class:`Data` is currently loaded
     """
+    files: Set[Tuple[str, Optional[str]]]
+    execs: Set[Tuple[str, Optional[str]]]
+    libs: Set[Tuple[str, Optional[str]]]
+    _need: List[Data]
+    _lneed: List[Data]
+    _needed_by: List[Data]
+    _is_final: bool
+    _is_loaded: bool
 
     def __init__(self) -> None:
-        self.files: Set[Tuple[str, Optional[str]]] = set()
-        self.execs: Set[Tuple[str, Optional[str]]] = set()
-        self.libs: Set[Tuple[str, Optional[str]]] = set()
-        self._need: List[Data] = []
-        self._lneed: List[Data] = []
-        self._needed_by: List[Data] = []
+        self.files = set()
+        self.execs = set()
+        self.libs = set()
+        self._need = []
+        self._lneed = []
+        self._needed_by = []
         self._is_final = False
         self._is_loaded = False
 
@@ -416,9 +416,9 @@ class DataError(Exception):
 class PathData(Data):
     """Absolute path
 
-    :type datapath: str
     :param datapath: Path of the data
     """
+    datapath: str
 
     def __init__(self, datapath: str):
         super().__init__()
@@ -437,9 +437,9 @@ class UuidData(Data):
     The UUID can be a filesystem UUID, or other UUID known by other
     :class:`Data` classes (e.g. a MD UUID).
 
-    :type uuid: str
     :param uuid: UUID of the data
     """
+    uuid: str
 
     def __init__(self, uuid: str):
         super().__init__()
@@ -455,17 +455,17 @@ class UuidData(Data):
 class LuksData(Data):
     """LUKS encrypted block device
 
-    :type source: :class:`Data`
     :param source: :class:`Data` to unlock (crypto_LUKS volume)
-    :type name: str
     :param name: Name for the LUKS volume
-    :type key: Optional[:class:`Data`]
     :param key: :class:`Data` to use as key file
-    :type header: Optional[:class:`Data`]
     :param header: :class:`Data` containing the LUKS header
-    :type discard: bool
     :param discard: Enable discards
     """
+    source: Data
+    name: str
+    key: Optional[Data]
+    header: Optional[Data]
+    discard: bool
 
     def __init__(self, source: Data, name: str,
                  key: Optional[Data] = None, header: Optional[Data] = None,
@@ -513,11 +513,11 @@ class LuksData(Data):
 class LvmData(Data):
     """LVM logical volume
 
-    :type vg_name: str
     :param vg_name: Name of the volume group
-    :type lv_name: str
     :param lv_name: Name of the logical volume
     """
+    vg_name: str
+    lv_name: str
 
     def __init__(self, vg_name: str, lv_name: str):
         super().__init__()
@@ -563,16 +563,16 @@ class LvmData(Data):
 class MountData(Data):
     """Mount point
 
-    :type source: :class:`Data`
     :param source: :class:`Data` to use as source
         (e.g. /dev/sda1, my-luks-data)
-    :type mountpoint: str
     :param mountpoint: Absolute path of the mountpoint
-    :type filesystem: str
     :param filesystem: Filesystem (used for ``mount -t filesystem``)
-    :type options: str
     :param options: Mount options
     """
+    source: Data
+    mountpoint: str
+    filesystem: str
+    options: str
 
     def __init__(self, source: Data, mountpoint: str, filesystem: str,
                  options: str = "ro"):
@@ -645,13 +645,13 @@ class MountData(Data):
 class MdData(Data):
     """MD RAID
 
-    :type sources: FrozenSet[:class:`Data`]
     :param sources: :class:`Data` to use as sources (e.g. /dev/sda1 and
         /dev/sdb1; or UUID=foo).
-    :type name: str
     :param name: Name for the MD device
     :raises ValueError: No :class:`Data` source
     """
+    sources: FrozenSet[Data]
+    name: str
 
     def __init__(self, sources: Iterable[Data], name: str):
         super().__init__()
@@ -700,11 +700,11 @@ class MdData(Data):
 class CloneData(Data):
     """Clone a :class:`Data` to another
 
-    :type source: :class:`Data`
     :param source: :class:`Data` to use as source
-    :type dest: :class:`Data`
     :param dest: :class:`Data` to use as destination
     """
+    source: Data
+    dest: Data
 
     def __init__(self, source: Data, dest: Data):
         super().__init__()
