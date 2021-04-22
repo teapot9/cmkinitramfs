@@ -18,8 +18,32 @@ Use a :class:`io.StringIO` if you need to use strings rather than a stream.
 from __future__ import annotations
 
 import os.path
+from enum import Enum, auto
 from shlex import quote
 from typing import FrozenSet, Iterable, IO, List, Optional, Set, Tuple
+
+
+class Breakpoint(Enum):
+    """Breakpoint in the boot process
+
+    Breakpoints can be enabled by adding rd.break to the kernel command-line
+    (e.g. ``./kernel.img foo rd.break=init``).
+    Setting ``rd.break=foo,bar`` will enable both ``foo`` and ``bar``.
+    Environment variables can also be set to enable them
+    (e.g. ``./kernel.img foo RD_BREAK_EARLY=true``).
+    """
+    #: Early break: break before any action, including command-line parsing.
+    #: Can be set with the ``RD_BREAK_EARLY`` environment variable.
+    EARLY = auto()
+    #: ``init``: Break after initramfs initialization.
+    #: Can also be set with the ``RD_BREAK_INIT`` environment variable.
+    INIT = auto()
+    #: ``rootfs``: Break after mounting the root filesystem.
+    #: Can also be set with the ``RD_BREAK_ROOTFS`` environment variable.
+    ROOTFS = auto()
+    #: ``mount``: Break after mounting all filesystems.
+    #: Can also be set with the ``RD_BREAK_MOUNT`` environment variable.
+    MOUNT = auto()
 
 
 def _fun_rescue_shell(out: IO[str]) -> None:
@@ -127,17 +151,35 @@ def do_init(out: IO[str]) -> None:
 def do_cmdline(out: IO[str]) -> None:
     """Parse the kernel command line for known parameters
 
+    Note: the command line is parsed up to "--", arguments after this
+    are passed through to the final init process.
+
     Parsed parameters:
-     - ``rescue_shell``: Immediately starts a rescue shell
-     - ``maintenance``: Starts a rescue shell after mounting rootfs
+
+     - ``rd.break={init|rootfs|mount}``: Stops the boot process,
+       defaults to ``rootfs``. See :class:`Breakpoint`.
 
     :param out: Stream to write into
     """
     out.writelines((
+        "echo 'Parsing command-line'\n",
         "for cmdline in $(cat /proc/cmdline); do\n",
         "\tcase \"${cmdline}\" in\n",
-        "\t\trescue_shell) rescue_shell 'Manual rescue shell';;\n",
-        "\t\tmaintenance) MAINTENANCE=true;;\n",
+        "\t--) break ;;\n",
+        "\trd.break) RD_BREAK_ROOTFS=true ;;\n",
+        "\trd.break=*)\n",
+        "\t\tOLDIFS=\"${IFS}\"\n",
+        "\t\tIFS=','\n",
+        "\t\tfor bpoint in ${cmdline#*=}; do\n",
+        "\t\t\tcase \"${bpoint}\" in\n",
+        "\t\t\tinit) RD_BREAK_INIT=true ;;\n",
+        "\t\t\trootfs) RD_BREAK_ROOTFS=true ;;\n",
+        "\t\t\tmount) RD_BREAK_MOUNT=true ;;\n",
+        "\t\t\t*) printk \"ERROR: Unknown breakpoint ${bpoint}\" ;;\n",
+        "\t\t\tesac\n",
+        "\t\tdone\n",
+        "\t\tIFS=\"${OLDIFS}\"\n",
+        "\t\t;;\n",
         "\tesac\n",
         "done\n",
         "\n",
@@ -160,15 +202,25 @@ def do_keymap(out: IO[str], keymap_file: str) -> None:
     ))
 
 
-def do_maintenance(out: IO[str]) -> None:
-    """Drop to a shell if maintenance mode is enabled
+def do_break(out: IO[str], breakpoint: Breakpoint) -> None:
+    """Drop into a shell if rd.break is set
 
     :param out: Stream to write into
+    :param breakpoint: Which breakpoint to check
     """
+    if breakpoint is Breakpoint.EARLY:
+        breakname = 'RD_BREAK_EARLY'
+    elif breakpoint is Breakpoint.INIT:
+        breakname = 'RD_BREAK_INIT'
+    elif breakpoint is Breakpoint.ROOTFS:
+        breakname = 'RD_BREAK_ROOTFS'
+    elif breakpoint is Breakpoint.MOUNT:
+        breakname = 'RD_BREAK_MOUNT'
+
     out.writelines((
-        "[ -n \"${MAINTENANCE}\" ] && ",
-        "rescue_shell 'Going into maintenance mode'\n",
-        "\n",
+        "[ -n \"${", breakname, "+x}\" ] && rescue_shell ",
+        quote(f"Reached {breakpoint}"),
+        "\n\n",
     ))
 
 
@@ -754,12 +806,15 @@ def mkinit(out: IO[str], root: Data, mounts: Optional[Iterable[Data]] = None,
         init = '/sbin/init'
 
     do_header(out)
+    do_break(out, Breakpoint.EARLY)
     do_init(out)
     do_cmdline(out)
     if keymap is not None:
         do_keymap(out, keymap)
+    do_break(out, Breakpoint.INIT)
     root.load(out)
-    do_maintenance(out)
+    do_break(out, Breakpoint.ROOTFS)
     for mount in mounts:
         mount.load(out)
+    do_break(out, Breakpoint.MOUNT)
     do_switch_root(out, init, root)

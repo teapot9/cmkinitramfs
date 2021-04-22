@@ -5,6 +5,10 @@ mkinit
 .. automodule:: cmkinitramfs.mkinit
    :platform: Linux
 
+.. autoclass:: Breakpoint
+   :members:
+   :show-inheritance:
+
 .. autofunction:: _fun_rescue_shell
 
 .. autofunction:: _fun_printk
@@ -21,7 +25,7 @@ mkinit
 
 .. autofunction:: do_keymap
 
-.. autofunction:: do_maintenance
+.. autofunction:: do_break
 
 .. autofunction:: do_switch_root
 
