@@ -123,7 +123,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
                 find_data(data_config['source']),
                 data_config['mountpoint'],
                 data_config['filesystem'],
-                data_config.get('options'),
+                data_config.get('options', 'ro'),
             )
         elif data_config['type'] == 'md':
             data_dic[data_id] = mkinit.MdData(
@@ -202,11 +202,11 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
 def entry_cmkinit() -> None:
     """Main entry point of the module"""
     config = read_config()
-    print(mkinit.mkinit(
-        root=config.root, mounts=config.mounts,
+    mkinit.mkinit(
+        out=sys.stdout, root=config.root, mounts=config.mounts,
         keymap=(None if config.keymap is None else config.keymap[2]),
         init=config.init
-    ))
+    )
 
 
 def entry_cmkcpiolist() -> None:
@@ -284,11 +284,11 @@ def entry_cmkcpiolist() -> None:
 
     # Init
     with open(config.init_path, 'w') as init_file:
-        init_file.write(mkinit.mkinit(
-            root=config.root, mounts=config.mounts,
+        mkinit.mkinit(
+            out=init_file, root=config.root, mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
             init=config.init
-        ))
+        )
 
     # Initramfs
     if not args.only_build_archive:
@@ -414,11 +414,11 @@ def entry_cmkcpiodir() -> None:
 
     # Init
     with open(config.init_path, 'w') as init_file:
-        init_file.write(mkinit.mkinit(
-            root=config.root, mounts=config.mounts,
+        mkinit.mkinit(
+            out=init_file, root=config.root, mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
             init=config.init
-        ))
+        )
 
     # Initramfs
     if not args.only_build_archive:

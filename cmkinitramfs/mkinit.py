@@ -1,181 +1,199 @@
 """Library providing functions and classes to build an init script
 
-``do_foo()`` functions return a string performing the foo action. This
-string should be written into the init script.
+``do_foo()`` functions write a string performing the foo action into a
+stream. This stream should be the init script.
 
-``_fun_foo()`` functions return a string defining the foo function. This
-string should be written into the init script.
+``_fun_foo()`` functions write a string defining the foo function into a
+stream. This stream should be the init script.
 
 The :class:`Data` class defines an abstract object containing data,
 it has multiple subclasses for multiple types of data.
 The main methods of those classes are :meth:`Data.load`, :meth:`Data.unload`,
 and :meth:`Data.set_final`.
-The "init script string" returned by some methods should be appended to
-the init script.
+Most functions will write into a stream (:term:`text file`) the content
+of the init script.
+Use a :class:`io.StringIO` if you need to use strings rather than a stream.
 """
 
 from __future__ import annotations
 
 import os.path
 from shlex import quote
-from typing import FrozenSet, Iterable, List, Optional, Set, Tuple
+from typing import FrozenSet, Iterable, IO, List, Optional, Set, Tuple
 
 
-def _fun_rescue_shell() -> str:
+def _fun_rescue_shell(out: IO[str]) -> None:
     """Define the rescue_shell function
-    rescue_shell takes one argument and drop the user to /bin/sh,
+
+    ``rescue_shell`` takes one argument and drop the user to ``/bin/sh``,
     the argument is the error to print to the user.
+
+    :param out: Stream to write into
     """
-    return (
-        "rescue_shell()\n"
-        "{\n"
-        "\tprintk \"$1\"\n"
-        "\techo 'Dropping you into a shell'\n"
-        "\texec '/bin/sh'\n"
-        "}\n"
-    )
+    out.writelines((
+        "rescue_shell()\n",
+        "{\n",
+        "\tprintk \"$1\"\n",
+        "\techo 'Dropping you into a shell'\n",
+        "\texec '/bin/sh'\n",
+        "}\n\n",
+    ))
 
 
-def _fun_printk() -> str:
+def _fun_printk(out: IO[str]) -> None:
     """Define the printk function
-    printk takes one argument and prints it to both the kernel log and stderr
+
+    ``printk`` takes one argument and prints it to both the kernel log
+    and stderr.
+
+    :param out: Stream to write into
     """
-    return (
-        "printk()\n"
-        "{\n"
-        "\techo \"initramfs: $1\" 1>/dev/kmsg\n"
-        "\techo \"$1\" 1>&2\n"
-        "}\n"
-    )
+    out.writelines((
+        "printk()\n",
+        "{\n",
+        "\techo \"initramfs: $1\" 1>/dev/kmsg\n",
+        "\techo \"$1\" 1>&2\n",
+        "}\n\n",
+    ))
 
 
-def _die(message: str) -> str:
+def _die(message: str, newline: bool = True) -> str:
     """Stop the boot process with an error
-    The string will be single quoted and escaped.
-    This is a helper calling rescue_shell.
+
+    This is a helper calling ``rescue_shell``.
+
+    :param message: Error message to print
+    :param newline: Include a newline at the end of the function call
+    :return: String stopping the boot proces, the error message will be
+        single quoted and escaped
     """
-    return f"rescue_shell {quote(f'FATAL: {message}')}"
+    end = '\n' if newline else ''
+    return f"rescue_shell {quote(f'FATAL: {message}')}{end}"
 
 
-def do_header(home: str = '/root', path: str = '/bin:/sbin') -> str:
+def do_header(out: IO[str], home: str = '/root', path: str = '/bin:/sbin') \
+        -> None:
     """Create the /init header
 
      - Create the shebang ``/bin/sh``
      - Configure environment variables
      - Define ``rescue_shell`` and ``printk``
 
+    :param out: Stream to write into
     :param home: ``HOME`` environment variable
     :param path: ``PATH`` environment variable
-    :return: Init script string
     """
-    return (
-        "#!/bin/sh\n"
-        "\n"
-        f"HOME={quote(home)}\n"
-        "export HOME\n"
-        f"PATH={quote(path)}\n"
-        "export PATH\n"
-        "\n"
-        f"{_fun_rescue_shell()}\n"
-        f"{_fun_printk()}\n"
-        "echo 'INITRAMFS: Start'\n"
-        "\n"
-    )
+    out.writelines((
+        "#!/bin/sh\n",
+        "\n",
+        f"HOME={quote(home)}\n",
+        "export HOME\n",
+        f"PATH={quote(path)}\n",
+        "export PATH\n",
+        "\n",
+    ))
+    _fun_rescue_shell(out)
+    _fun_printk(out)
+    out.writelines((
+        "echo 'INITRAMFS: Start'\n",
+        "\n",
+    ))
 
 
-def do_init() -> str:
+def do_init(out: IO[str]) -> None:
     """Initialize the init environment
 
      - Check the current PID is 1
      - Mount ``/proc``, ``/sys``, ``/dev``
      - Set the kernel log level to 3
 
-    :return: Init script string
+    :param out: Stream to write into
     """
-    return (
-        "echo 'Initialization'\n"
-        "test $$ -eq 1 || "
-        f"{_die('init expects to be run as PID 1')}\n"
-        "mount -t proc none /proc || "
-        f"{_die('Failed to mount /proc')}\n"
-        "mount -t sysfs none /sys || "
-        f"{_die('Failed to mount /sys')}\n"
-        "mount -t devtmpfs none /dev || "
-        f"{_die('Failed to mount /dev')}\n"
-        "echo 3 1>'/proc/sys/kernel/printk'\n"
-        "\n"
-    )
+    out.writelines((
+        "echo 'Initialization'\n",
+        "test $$ -eq 1 || ",
+        _die('init expects to be run as PID 1'),
+        "mount -t proc none /proc || ",
+        _die('Failed to mount /proc'),
+        "mount -t sysfs none /sys || ",
+        _die('Failed to mount /sys'),
+        "mount -t devtmpfs none /dev || ",
+        _die('Failed to mount /dev'),
+        "echo 3 1>'/proc/sys/kernel/printk'\n",
+        "\n",
+    ))
 
 
-def do_cmdline() -> str:
+def do_cmdline(out: IO[str]) -> None:
     """Parse the kernel command line for known parameters
 
     Parsed parameters:
      - ``rescue_shell``: Immediately starts a rescue shell
      - ``maintenance``: Starts a rescue shell after mounting rootfs
 
-    :return: Init script string
+    :param out: Stream to write into
     """
-    return (
-        "for cmdline in $(cat /proc/cmdline); do\n"
-        "\tcase \"${cmdline}\" in\n"
-        "\t\trescue_shell) rescue_shell 'Manual rescue shell';;\n"
-        "\t\tmaintenance) MAINTENANCE=true;;\n"
-        "\tesac\n"
-        "done\n"
-        "\n"
-    )
+    out.writelines((
+        "for cmdline in $(cat /proc/cmdline); do\n",
+        "\tcase \"${cmdline}\" in\n",
+        "\t\trescue_shell) rescue_shell 'Manual rescue shell';;\n",
+        "\t\tmaintenance) MAINTENANCE=true;;\n",
+        "\tesac\n",
+        "done\n",
+        "\n",
+    ))
 
 
-def do_keymap(keymap_file: str) -> str:
+def do_keymap(out: IO[str], keymap_file: str) -> None:
     """Load a keymap
 
+    :param out: Stream to write into
     :param keymap_file: Absolute path of the file to load
-    :return: Init script string
     """
-    return (
-        "echo 'Loading keymap'\n"
-        f"[ -f {quote(keymap_file)} ] || "
-        f"{_die(f'Failed to load keymap, file {keymap_file} not found')}\n"
-        f"loadkmap <{quote(keymap_file)} || "
-        f"{_die(f'Failed to load keymap {keymap_file}')}\n"
-        "\n"
-    )
+    out.writelines((
+        "echo 'Loading keymap'\n",
+        f"[ -f {quote(keymap_file)} ] || ",
+        _die(f'Failed to load keymap, file {keymap_file} not found'),
+        f"loadkmap <{quote(keymap_file)} || ",
+        _die(f'Failed to load keymap {keymap_file}'),
+        "\n",
+    ))
 
 
-def do_maintenance() -> str:
+def do_maintenance(out: IO[str]) -> None:
     """Drop to a shell if maintenance mode is enabled
 
-    :return: Init script string
+    :param out: Stream to write into
     """
-    return (
-        "[ -n \"${MAINTENANCE}\" ] && "
-        "rescue_shell 'Going into maintenance mode'\n"
-        "\n"
-    )
+    out.writelines((
+        "[ -n \"${MAINTENANCE}\" ] && ",
+        "rescue_shell 'Going into maintenance mode'\n",
+        "\n",
+    ))
 
 
-def do_switch_root(init: str, newroot: Data) -> str:
+def do_switch_root(out: IO[str], init: str, newroot: Data) -> None:
     """Cleanup and switch root
 
       - Set kernel log level back to boot-time default
       - Unmount ``/dev``, ``/sys``, ``/proc``
       - Switch root
 
+    :param out: Stream to write into
     :param init: Init process to execute from the new root
     :param newroot: Data to use as new root
-    :return: Init script string
     """
-    return (
-        f"printk 'Run {init} as init process'\n"
-        "verb=\"$(awk '{ print $4 }' /proc/sys/kernel/printk)\"\n"
-        'echo "${verb}" >/proc/sys/kernel/printk\n'
-        f"umount /dev || {_die('Failed to unmount /dev')}\n"
-        f"umount /proc || {_die('Failed to unmount /proc')}\n"
-        f"umount /sys || {_die('Failed to unmount /sys')}\n"
-        "echo 'INITRAMFS: End'\n"
-        f"exec switch_root {newroot.path()} {quote(init)}\n"
-    )
+    out.writelines((
+        f"printk 'Run {init} as init process'\n",
+        "verb=\"$(awk '{ print $4 }' /proc/sys/kernel/printk)\"\n",
+        'echo "${verb}" >/proc/sys/kernel/printk\n',
+        "umount /dev || ", _die('Failed to unmount /dev'),
+        "umount /proc || ", _die('Failed to unmount /proc'),
+        "umount /sys || ", _die('Failed to unmount /sys'),
+        "echo 'INITRAMFS: End'\n",
+        f"exec switch_root {newroot.path()} {quote(init)}\n",
+        "\n",
+    ))
 
 
 class Data:
@@ -274,7 +292,7 @@ class Data:
         self._lneed.append(dep)
         dep._needed_by.append(self)
 
-    def _pre_load(self) -> str:
+    def _pre_load(self, out: IO[str]) -> None:
         """This function does preparation for loading the Data
 
         Loads all the needed dependencies.
@@ -283,20 +301,18 @@ class Data:
         This method *should not* be called if the :class:`Data` is
         already loaded.
 
-        :return: Init script string
+        :param out: Stream to write into
         :raises DataError: Already loaded
         """
-        code = ""
         if self._is_loaded:
             raise DataError(f"{self} is already loaded")
         self._is_loaded = True
         # Load dependencies
         for k in self._need + self._lneed:
             if not k._is_loaded:
-                code += k.load()
-        return code
+                k.load(out)
 
-    def _post_load(self) -> str:
+    def _post_load(self, out: IO[str]) -> None:
         """This function does post loading cleanup
 
         If the object is a loading dependency only, it will load all
@@ -306,23 +322,21 @@ class Data:
         It should be called from :meth:`load` after the actual loading
         of the data.
 
-        :return: Init script string
+        :param out: Stream to write into
         """
-        code = ""
         # If not final, load data needing self, this will allow an
         # unloading as soon as possible
         if not self._is_final:
             for k in self._needed_by:
                 if not k._is_loaded:
-                    code += k.load()
+                    k.load(out)
         # Unload data not needed anymore
         for k in self._lneed:
             k._needed_by.remove(self)
             if not k._needed_by:
-                code += k.unload()
-        return code
+                k.unload(out)
 
-    def load(self) -> str:
+    def load(self, out: IO[str]) -> None:
         """This function loads the data
 
         It should be redefined by subclasses,
@@ -334,27 +348,26 @@ class Data:
         unload unnecessary dependencies with :meth:`_post_load`.
         This method *should not* be called if the data is already loaded.
 
-        :return: Init script string
+        :param out: Stream to write into
         """
-        return self._pre_load() + self._post_load()
+        self._pre_load(out)
+        self._post_load(out)
 
-    def _pre_unload(self) -> str:
+    def _pre_unload(self, out: IO[str]) -> None:
         """This function does pre unloading sanity checks
 
         It should be called from :meth:`unload` before the actual unloading
         of the data.
 
-        :return: Init script string
+        :param out: Stream to write into
         :raises DataError: Not loaded or dependency issue
         """
-        code = ""
         if not self._is_loaded:
             raise DataError(f"{self} is not loaded")
         if self._is_final or self._needed_by:
             raise DataError(f"{self} is still needed or not temporary")
-        return code
 
-    def _post_unload(self) -> str:
+    def _post_unload(self, out: IO[str]) -> None:
         """This function does post unloading cleanup
 
         It removes itself from the :attr:`_needed_by` reverse dependencies
@@ -363,17 +376,15 @@ class Data:
         unloading of the data.
         This *should not* be called if the data is not loaded.
 
-        :return: Init script string
+        :param out: Stream to write into
         """
-        code = ""
         for k in self._need:
             k._needed_by.remove(self)
             if not k._needed_by:
-                code += k.unload()
+                k.unload(out)
         self._is_loaded = False
-        return code
 
-    def unload(self) -> str:
+    def unload(self, out: IO[str]) -> None:
         """This function unloads data
 
         It should be redefined by subclasses,
@@ -384,9 +395,10 @@ class Data:
         After unloading, this function should unload all unneeded
         dependencies, with :meth:`_post_unload`.
 
-        :return: Init script string
+        :param out: Stream to write into
         """
-        return self._pre_unload() + self._post_unload()
+        self._pre_unload(out)
+        self._post_unload(out)
 
     def __str__(self) -> str:
         """Get the name of the data
@@ -482,29 +494,29 @@ class LuksData(Data):
     def __str__(self) -> str:
         return self.name
 
-    def load(self) -> str:
+    def load(self, out: IO[str]) -> None:
         header = f'--header {self.header.path()} ' if self.header else ''
         key_file = f'--key-file {self.key.path()} ' if self.key else ''
         discard = '--allow-discards ' if self.discard else ''
-        return (
-            f"{self._pre_load()}"
-            f"echo 'Unlocking LUKS device {self}'\n"
-            f"cryptsetup {header}{key_file}{discard}"
-            f"open {self.source.path()} {quote(self.name)} || "
-            f"{_die(f'Failed to unlock LUKS device {self}')}\n"
-            "\n"
-            f"{self._post_load()}"
-        )
+        self._pre_load(out)
+        out.writelines((
+            f"echo 'Unlocking LUKS device {self}'\n",
+            "cryptsetup ", header, key_file, discard,
+            f"open {self.source.path()} {quote(self.name)} || ",
+            _die(f'Failed to unlock LUKS device {self}'),
+            "\n",
+        ))
+        self._post_load(out)
 
-    def unload(self) -> str:
-        return (
-            f"{self._pre_unload()}"
-            f"echo 'Closing LUKS device {self}'\n"
-            f"cryptsetup close {quote(self.name)} || "
-            f"{_die(f'Failed to close LUKS device {self}')}\n"
-            "\n"
-            f"{self._post_unload()}"
-        )
+    def unload(self, out: IO[str]) -> None:
+        self._pre_unload(out)
+        out.writelines((
+            f"echo 'Closing LUKS device {self}'\n",
+            f"cryptsetup close {quote(self.name)} || ",
+            _die(f'Failed to close LUKS device {self}'),
+            "\n",
+        ))
+        self._post_unload(out)
 
     def path(self) -> str:
         return quote('/dev/mapper/' + self.name)
@@ -528,31 +540,31 @@ class LvmData(Data):
     def __str__(self) -> str:
         return self.vg_name + "/" + self.lv_name
 
-    def load(self) -> str:
-        return (
-            f"{self._pre_load()}"
-            f"echo 'Enabling LVM logical volume {self}'\n"
-            "lvm lvchange --sysinit -a ly "
-            f"{quote(f'{self.vg_name}/{self.lv_name}')} || "
-            f"{_die(f'Failed to enable LVM logical volume {self}')}\n"
-            "lvm vgscan --mknodes || "
-            f"{_die(f'Failed to create LVM nodes for {self}')}\n"
-            "\n"
-            f"{self._post_load()}"
-        )
+    def load(self, out: IO[str]) -> None:
+        self._pre_load(out)
+        out.writelines((
+            f"echo 'Enabling LVM logical volume {self}'\n",
+            "lvm lvchange --sysinit -a ly ",
+            f"{quote(f'{self.vg_name}/{self.lv_name}')} || ",
+            _die(f'Failed to enable LVM logical volume {self}'),
+            "lvm vgscan --mknodes || ",
+            _die(f'Failed to create LVM nodes for {self}'),
+            "\n",
+        ))
+        self._post_load(out)
 
-    def unload(self) -> str:
-        return (
-            f"{self._pre_unload()}"
-            f"echo 'Disabling LVM logical volume {self}'\n"
-            "lvm lvchange --sysinit -a ln "
-            f"{quote(f'{self.vg_name}/{self.lv_name}')} || "
-            f"{_die(f'Failed to disable LVM logical volume {self}')}\n"
-            "lvm vgscan --mknodes || "
-            f"{_die(f'Failed to remove LVM nodes for {self}')}\n"
-            "\n"
-            f"{self._post_unload()}"
-        )
+    def unload(self, out: IO[str]) -> None:
+        self._pre_unload(out)
+        out.writelines((
+            f"echo 'Disabling LVM logical volume {self}'\n",
+            "lvm lvchange --sysinit -a ln ",
+            f"{quote(f'{self.vg_name}/{self.lv_name}')} || ",
+            _die(f'Failed to disable LVM logical volume {self}'),
+            "lvm vgscan --mknodes || ",
+            _die(f'Failed to remove LVM nodes for {self}'),
+            "\n",
+        ))
+        self._post_unload(out)
 
     def path(self) -> str:
         # If LV or VG name has an hyphen '-', LVM doubles it in the path
@@ -601,42 +613,39 @@ class MountData(Data):
     def __str__(self) -> str:
         return self.mountpoint
 
-    def load(self) -> str:
+    def load(self, out: IO[str]) -> None:
         fsck = (
-            "FSTAB_FILE=/dev/null "
-            f'fsck -t {quote(self.filesystem)} {self.source.path()} || '
-            f"{_die(f'Failed to check filesystem {self}')}\n"
-            if self.source.path() != 'none'
-            else ''
-        )
+            "FSTAB_FILE=/dev/null ",
+            f'fsck -t {quote(self.filesystem)} {self.source.path()} || ',
+            _die(f'Failed to check filesystem {self}'),
+        ) if self.source.path() != 'none' else ()
         mkdir = (
-            f"[ -d {quote(self.mountpoint)} ] || "
-            f"mkdir {quote(self.mountpoint)} || "
-            f"{_die(f'Failed to create directory {self}')}\n"
-            if os.path.dirname(self.mountpoint) == '/mnt'
-            else ''
-        )
-        return (
-            f"{self._pre_load()}"
-            f"echo 'Mounting filesystem {self}'\n"
-            f"{fsck}"
-            f"{mkdir}"
-            f"mount -t {quote(self.filesystem)} -o {quote(self.options)} "
-            f"{self.source.path()} {quote(self.mountpoint)} || "
-            f"{_die(f'Failed to mount filesystem {self}')}\n"
-            "\n"
-            f"{self._post_load()}"
-        )
+            f"[ -d {quote(self.mountpoint)} ] || ",
+            f"mkdir {quote(self.mountpoint)} || ",
+            _die(f'Failed to create directory {self}'),
+        ) if os.path.dirname(self.mountpoint) == '/mnt' else ()
 
-    def unload(self) -> str:
-        return (
-            f"{self._pre_unload()}"
-            f"echo 'Unmounting filesystem {self}'\n"
-            f"umount {quote(self.mountpoint)} || "
-            f"{_die(f'Failed to unmount filesystem {self}')}\n"
-            "\n"
-            f"{self._post_unload()}"
-        )
+        self._pre_load(out)
+        out.writelines((
+            f"echo 'Mounting filesystem {self}'\n",
+            *fsck,
+            *mkdir,
+            f"mount -t {quote(self.filesystem)} -o {quote(self.options)} ",
+            f"{self.source.path()} {quote(self.mountpoint)} || ",
+            _die(f'Failed to mount filesystem {self}'),
+            "\n",
+        ))
+        self._post_load(out)
+
+    def unload(self, out: IO[str]) -> None:
+        self._pre_unload(out)
+        out.writelines((
+            f"echo 'Unmounting filesystem {self}'\n",
+            f"umount {quote(self.mountpoint)} || ",
+            _die(f'Failed to unmount filesystem {self}'),
+            "\n",
+        ))
+        self._post_unload(out)
 
     def path(self) -> str:
         return quote(self.mountpoint)
@@ -664,34 +673,35 @@ class MdData(Data):
     def __str__(self) -> str:
         return self.name
 
-    def load(self) -> str:
+    def load(self, out: IO[str]) -> None:
         # Get the string containing all sources to use
-        sources_string = ""
+        sources: List[str] = []
         for source in self.sources:
             if isinstance(source, UuidData):
-                sources_string += f"--uuid {quote(source.uuid)} "
+                sources.append(f"--uuid {quote(source.uuid)} ")
             else:
-                sources_string += f"{source.path()} "
-        return (
-            f"{self._pre_load()}"
-            f"echo 'Assembling MD RAID {self}'\n"
-            "MDADM_NO_UDEV=1 "
-            f"mdadm --assemble {sources_string}{quote(self.name)} || "
-            f"{_die(f'Failed to assemble MD RAID {self}')}\n"
-            "\n"
-            f"{self._post_load()}"
-        )
+                sources.append(f"{source.path()} ")
 
-    def unload(self) -> str:
-        return (
-            f"{self._pre_unload()}"
-            f"echo 'Stopping MD RAID {self}'\n"
-            "MDADM_NO_UDEV=1 "
-            f"mdadm --stop {quote(self.name)} || "
-            f"{_die(f'Failed to stop MD RAID {self}')}\n"
-            "\n"
-            f"{self._post_unload()}"
-        )
+        self._pre_load(out)
+        out.writelines((
+            f"echo 'Assembling MD RAID {self}'\n",
+            "MDADM_NO_UDEV=1 ",
+            "mdadm --assemble ", *sources, f"{quote(self.name)} || ",
+            _die(f'Failed to assemble MD RAID {self}'),
+            "\n",
+        ))
+        self._post_load(out)
+
+    def unload(self, out: IO[str]) -> None:
+        self._pre_unload(out)
+        out.writelines((
+            f"echo 'Stopping MD RAID {self}'\n",
+            "MDADM_NO_UDEV=1 ",
+            f"mdadm --stop {quote(self.name)} || ",
+            _die(f'Failed to stop MD RAID {self}'),
+            "\n",
+        ))
+        self._post_unload(out)
 
     def path(self) -> str:
         return quote('/dev/md/' + self.name)
@@ -714,24 +724,25 @@ class CloneData(Data):
     def __str__(self) -> str:
         return f"{self.source} to {self.dest}"
 
-    def load(self) -> str:
-        return (
-            f"{self._pre_load()}"
-            f"echo 'Cloning {self}'\n"
-            f"cp -aT {self.source.path()} {self.dest.path()} || "
-            f"{_die(f'Failed to clone {self}')}\n"
-            "\n"
-            f"{self._post_load()}"
-        )
+    def load(self, out: IO[str]) -> None:
+        self._pre_load(out)
+        out.writelines((
+            f"echo 'Cloning {self}'\n",
+            f"cp -aT {self.source.path()} {self.dest.path()} || ",
+            _die(f'Failed to clone {self}'),
+            "\n",
+        ))
+        self._post_load(out)
 
     def path(self) -> str:
         return self.dest.path()
 
 
-def mkinit(root: Data, mounts: Optional[Iterable[Data]] = None,
-           keymap: Optional[str] = None, init: Optional[str] = None) -> str:
+def mkinit(out: IO[str], root: Data, mounts: Optional[Iterable[Data]] = None,
+           keymap: Optional[str] = None, init: Optional[str] = None) -> None:
     """Create the init script
 
+    :param out: Stream to write into
     :param root: :class:`Data` to use as rootfs
     :param mounts: :class:`Data` needed in addition of rootfs
     :param keymap: Path of the keymap to load, :data:`None` means no keymap
@@ -742,12 +753,13 @@ def mkinit(root: Data, mounts: Optional[Iterable[Data]] = None,
     if init is None:
         init = '/sbin/init'
 
-    script = [do_header(), do_init(), do_cmdline()]
+    do_header(out)
+    do_init(out)
+    do_cmdline(out)
     if keymap is not None:
-        script.append(do_keymap(keymap))
-    script.append(root.load())
-    script.append(do_maintenance())
+        do_keymap(out, keymap)
+    root.load(out)
+    do_maintenance(out)
     for mount in mounts:
-        script.append(mount.load())
-    script.append(do_switch_root(init, root))
-    return ''.join(script)
+        mount.load(out)
+    do_switch_root(out, init, root)

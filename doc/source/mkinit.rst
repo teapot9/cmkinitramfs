@@ -5,6 +5,12 @@ mkinit
 .. automodule:: cmkinitramfs.mkinit
    :platform: Linux
 
+.. autofunction:: _fun_rescue_shell
+
+.. autofunction:: _fun_printk
+
+.. autofunction:: _die
+
 .. autofunction:: mkinit
 
 .. autofunction:: do_header
