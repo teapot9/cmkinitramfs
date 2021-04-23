@@ -13,6 +13,10 @@ mkinit
 
 .. autofunction:: _fun_printk
 
+.. autofunction:: _fun_panic
+
+.. autofunction:: _fun_die
+
 .. autofunction:: _die
 
 .. autofunction:: mkinit

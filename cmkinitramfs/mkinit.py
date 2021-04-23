@@ -52,6 +52,8 @@ def _fun_rescue_shell(out: IO[str]) -> None:
     ``rescue_shell`` takes one argument and drop the user to ``/bin/sh``,
     the argument is the error to print to the user.
 
+    This function *should not* be called from a subshell.
+
     :param out: Stream to write into
     """
     out.writelines((
@@ -81,10 +83,51 @@ def _fun_printk(out: IO[str]) -> None:
     ))
 
 
+def _fun_panic(out: IO[str]) -> None:
+    """Define the panic function
+
+    ``panic`` causes a kernel panic by exiting ``/init``.
+    It takes one argument: the error message.
+
+    This function *should not* be called from a subshell.
+
+    :param out: Stream to write into
+    """
+    out.writelines((
+        "panic()\n",
+        "{\n",
+        "\tprintk \"$1\"\n",
+        "\techo 'Terminating init'\n",
+        "\tsync\n",
+        "\texit\n",
+        "}\n\n",
+    ))
+
+
+def _fun_die(out: IO[str]) -> None:
+    """Define the die function
+
+    ``die`` will either start a rescue shell or cause a kernel panic,
+    wether ``RD_PANIC`` is set or not.
+    It takes one argument: the error message passed to ``panic``
+    or ``rescue_shell``.
+
+    This function *should not* be called from a subshell.
+
+    :param out: Stream to write into
+    """
+    out.writelines((
+        "die()\n",
+        "{\n",
+        "\t[ -n \"${RD_PANIC+x}\" ] && panic \"$1\" || rescue_shell \"$1\"\n",
+        "}\n\n",
+    ))
+
+
 def _die(message: str, newline: bool = True) -> str:
     """Stop the boot process with an error
 
-    This is a helper calling ``rescue_shell``.
+    This is a helper calling ``die``.
 
     :param message: Error message to print
     :param newline: Include a newline at the end of the function call
@@ -92,7 +135,7 @@ def _die(message: str, newline: bool = True) -> str:
         single quoted and escaped
     """
     end = '\n' if newline else ''
-    return f"rescue_shell {quote(f'FATAL: {message}')}{end}"
+    return f"die {quote(f'FATAL: {message}')}{end}"
 
 
 def do_header(out: IO[str], home: str = '/root', path: str = '/bin:/sbin') \
@@ -118,6 +161,8 @@ def do_header(out: IO[str], home: str = '/root', path: str = '/bin:/sbin') \
     ))
     _fun_rescue_shell(out)
     _fun_printk(out)
+    _fun_panic(out)
+    _fun_die(out)
     out.writelines((
         "echo 'INITRAMFS: Start'\n",
         "\n",
@@ -158,6 +203,9 @@ def do_cmdline(out: IO[str]) -> None:
 
      - ``rd.break={init|rootfs|mount}``: Stops the boot process,
        defaults to ``rootfs``. See :class:`Breakpoint`.
+     - ``rd.debug``: Enable debugging mode (with ``set -x``).
+     - ``rd.panic``: On fatal error: cause a kernel panic rather than
+       dropping into a shell.
 
     :param out: Stream to write into
     """
@@ -180,8 +228,12 @@ def do_cmdline(out: IO[str]) -> None:
         "\t\tdone\n",
         "\t\tIFS=\"${OLDIFS}\"\n",
         "\t\t;;\n",
+        "\trd.debug) RD_DEBUG=true ;;\n",
+        "\trd.panic) RD_PANIC=true ;;\n",
         "\tesac\n",
         "done\n",
+        "\n",
+        "[ -n \"${RD_DEBUG+x}\" ] && PS4='+ $0:$LINENO: ' && set -x\n",
         "\n",
     ))
 
