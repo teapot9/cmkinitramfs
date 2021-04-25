@@ -216,6 +216,9 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
 def entry_cmkinit() -> None:
     """Main entry point of the module"""
     config = read_config()
+    parser = argparse.ArgumentParser(description="Build an init script")
+    parser.add_argument('--version', action='version', version=_VERSION_INFO)
+    parser.parse_args()
     mkinit.mkinit(
         out=sys.stdout, root=config.root, mounts=config.mounts,
         keymap=(None if config.keymap is None else config.keymap[2]),
@@ -223,35 +226,30 @@ def entry_cmkinit() -> None:
     )
 
 
-def entry_cmkcpiolist() -> None:
-    """Entry point for cmkcpiolist"""
+def _set_logging_level(verbose: bool, quiet: int) -> None:
+    """Set global logging level according to verbose and quiet"""
+    if verbose:
+        level = logging.DEBUG
+    elif quiet >= 3:
+        level = logging.CRITICAL
+    elif quiet >= 2:
+        level = logging.ERROR
+    elif quiet >= 1:
+        level = logging.WARNING
+    else:
+        level = logging.INFO
+    logging.getLogger().setLevel(level)
 
-    # Load configuration
-    config = read_config()
 
-    # Arguments
-    parser = argparse.ArgumentParser(
-        description="Build an initramfs using a CPIO list"
-    )
+def _common_parser_cmkcpio() -> argparse.ArgumentParser:
+    """Create the common parser for cmkcpio* entry points"""
+    parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         '--version', action='version', version=_VERSION_INFO
-    )
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        '--only-build-archive', '-c', action="store_true", default=False,
-        help="only build the CPIO archive from an existing CPIO list"
-    )
-    group.add_argument(
-        '--only-build-list', '-L', action="store_true", default=False,
-        help="only build the CPIO list, implies -k"
     )
     parser.add_argument(
         "--debug", "-d", action="store_true", default=False,
         help="debugging mode: non-root, implies -k"
-    )
-    parser.add_argument(
-        '--keep', '-k', action="store_true", default=False,
-        help="keep the created CPIO list"
     )
     parser.add_argument(
         '--verbose', '-v', action='store_true', default=False,
@@ -263,8 +261,34 @@ def entry_cmkcpiolist() -> None:
     )
     parser.add_argument(
         "--output", "-o", type=str, default='/usr/src/initramfs.cpio',
-        help="set the output of the CPIO archive (can be set in the "
-        "configuration file)"
+        help="set the output of the CPIO archive"
+    )
+    return parser
+
+
+def entry_cmkcpiolist() -> None:
+    """Entry point for cmkcpiolist"""
+
+    # Load configuration
+    config = read_config()
+
+    # Arguments
+    parser = argparse.ArgumentParser(
+        description="Build an initramfs using a CPIO list",
+        parents=(_common_parser_cmkcpio(),)
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        '--only-build-archive', '-c', action="store_true", default=False,
+        help="only build the CPIO archive from an existing CPIO list"
+    )
+    group.add_argument(
+        '--only-build-list', '-L', action="store_true", default=False,
+        help="only build the CPIO list, implies -k"
+    )
+    parser.add_argument(
+        '--keep', '-k', action="store_true", default=False,
+        help="keep the created CPIO list"
     )
     parser.add_argument(
         '--cpio-list', '-l', type=str, default='/tmp/initramfs.list',
@@ -274,18 +298,7 @@ def entry_cmkcpiolist() -> None:
             shlex.split(config.cmkcpiolist_opts, posix=True) + sys.argv[1:]
     )
 
-    # Set logger level
-    if args.verbose:
-        level = logging.DEBUG
-    elif args.quiet >= 3:
-        level = logging.CRITICAL
-    elif args.quiet >= 2:
-        level = logging.ERROR
-    elif args.quiet >= 1:
-        level = logging.WARNING
-    else:
-        level = logging.INFO
-    logging.getLogger().setLevel(level)
+    _set_logging_level(args.verbose, args.quiet)
 
     # Parse arguments
     if args.debug or args.only_build_list:
@@ -361,10 +374,8 @@ def entry_cmkcpiodir() -> None:
 
     # Arguments
     parser = argparse.ArgumentParser(
-        description="Build an initramfs using a directory."
-    )
-    parser.add_argument(
-        '--version', action='version', version=_VERSION_INFO
+        description="Build an initramfs using a directory.",
+        parents=(_common_parser_cmkcpio(),)
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
@@ -376,28 +387,12 @@ def entry_cmkcpiodir() -> None:
         help="only build the initramfs directory, implies -k"
     )
     parser.add_argument(
-        "--debug", "-d", action="store_true", default=False,
-        help="debugging mode: non-root, implies -k"
-    )
-    parser.add_argument(
         '--keep', '-k', action="store_true", default=False,
         help="keep the created initramfs directory"
     )
     parser.add_argument(
         "--clean", "-C", action="store_true", default=False,
         help="overwrite temporary directory if it exists, use carefully"
-    )
-    parser.add_argument(
-        '--verbose', '-v', action='store_true', default=False,
-        help="be verbose",
-    )
-    parser.add_argument(
-        '--quiet', '-q', action='count', default=0,
-        help="be quiet (can be repeated)",
-    )
-    parser.add_argument(
-        "--output", "-o", type=str, default='/usr/src/initramfs.cpio',
-        help="set the output of the CPIO archive"
     )
     parser.add_argument(
         '--build-dir', '-b', type=str, default='/tmp/initramfs',
@@ -407,18 +402,7 @@ def entry_cmkcpiodir() -> None:
             shlex.split(config.cmkcpiodir_opts, posix=True) + sys.argv[1:]
     )
 
-    # Set logger level
-    if args.verbose:
-        level = logging.DEBUG
-    elif args.quiet >= 3:
-        level = logging.CRITICAL
-    elif args.quiet >= 2:
-        level = logging.ERROR
-    elif args.quiet >= 1:
-        level = logging.WARNING
-    else:
-        level = logging.INFO
-    logging.getLogger().setLevel(level)
+    _set_logging_level(args.verbose, args.quiet)
 
     # Parse arguments
     if args.debug or args.only_build_directory:
