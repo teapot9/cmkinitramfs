@@ -21,8 +21,7 @@ import itertools
 import os.path
 from enum import Enum, auto
 from shlex import quote
-from typing import (FrozenSet, Iterable, Iterator, IO, List, Optional, Set,
-                    Tuple)
+from typing import FrozenSet, Iterable, Iterator, IO, Optional, Set, Tuple
 
 
 class Breakpoint(Enum):
@@ -330,9 +329,9 @@ class Data:
     files: Set[Tuple[str, Optional[str]]]
     execs: Set[Tuple[str, Optional[str]]]
     libs: Set[Tuple[str, Optional[str]]]
-    _need: List[Data]
-    _lneed: List[Data]
-    _needed_by: List[Data]
+    _need: Set[Data]
+    _lneed: Set[Data]
+    _needed_by: Set[Data]
     _is_final: bool
     _is_loaded: bool
 
@@ -356,9 +355,9 @@ class Data:
         self.files = set()
         self.execs = set()
         self.libs = set()
-        self._need = []
-        self._lneed = []
-        self._needed_by = []
+        self._need = set()
+        self._lneed = set()
+        self._needed_by = set()
         self._is_final = False
         self._is_loaded = False
 
@@ -388,13 +387,13 @@ class Data:
 
     def add_dep(self, dep: Data) -> None:
         """Add a :class:`Data` object to the hard dependencies"""
-        self._need.append(dep)
-        dep._needed_by.append(self)
+        self._need.add(dep)
+        dep._needed_by.add(self)
 
     def add_load_dep(self, dep: Data) -> None:
         """Add a :class:`Data` object to the loading dependencies"""
-        self._lneed.append(dep)
-        dep._needed_by.append(self)
+        self._lneed.add(dep)
+        dep._needed_by.add(self)
 
     def _pre_load(self, out: IO[str]) -> None:
         """This function does preparation for loading the Data
@@ -412,7 +411,7 @@ class Data:
             raise DataError(f"{self} is already loaded")
         self._is_loaded = True
         # Load dependencies
-        for k in self._need + self._lneed:
+        for k in self._need | self._lneed:
             if not k._is_loaded:
                 k.load(out)
 
@@ -834,12 +833,12 @@ class MdData(Data):
 
     def load(self, out: IO[str]) -> None:
         # Get the string containing all sources to use
-        sources: List[str] = []
+        sources: Set[str] = set()
         for source in self.sources:
             if isinstance(source, UuidData):
-                sources.append(f"--uuid {quote(source.uuid)} ")
+                sources.add(f"--uuid {quote(source.uuid)} ")
             else:
-                sources.append(f"{source.path()} ")
+                sources.add(f"{source.path()} ")
 
         self._pre_load(out)
         out.writelines((
