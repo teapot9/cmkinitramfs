@@ -372,7 +372,8 @@ def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
     :return: Iterator of absolute paths of BusyBox applets
     :raises subprocess.CalledProcessError: Error during ``busybox_exec``
     """
-    cmd = [busybox_exec, '--list-full']
+    cmd = (busybox_exec, '--list-full')
+    logger.debug("Subprocess: %s", cmd)
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -392,9 +393,11 @@ def mkcpio_from_dir(src: str, dest: IO[bytes]) -> None:
 
     oldpwd = os.getcwd()
     os.chdir(src)
-    cmd = ["find", ".", "-print0"]
+    cmd: Tuple[str, ...] = ("find", ".", "-print0")
+    logger.debug("Subprocess: %s", cmd)
     with subprocess.Popen(cmd, stdout=subprocess.PIPE) as find:
-        cmd = ['cpio', '--quiet', '--null', '--create', '--format=newc']
+        cmd = ('cpio', '--quiet', '--null', '--create', '--format=newc')
+        logger.debug("Subprocess: %s", cmd)
         with subprocess.Popen(cmd, stdin=find.stdout, stdout=dest) as cpio:
             if cpio.wait() != 0:
                 raise subprocess.CalledProcessError(cpio.returncode, cpio.args)
@@ -410,7 +413,9 @@ def mkcpio_from_list(src: str, dest: IO[bytes]) -> None:
     :param dest: Destination stream of the CPIO data
     :raises subprocess.CalledProcessError: Error during ``gen_init_cpio``
     """
-    subprocess.check_call(['gen_init_cpio', src], stdout=dest)
+    cmd = ('gen_init_cpio', src)
+    logger.debug("Subprocess: %s", cmd)
+    subprocess.check_call(cmd, stdout=dest)
 
 
 @functools.lru_cache()
@@ -1084,5 +1089,6 @@ def keymap_build(src: str, dest: IO[bytes], unicode: bool = True) -> None:
     :param unicode: Generate a unicode keymap (rather than ASCII)
     :raises subprocess.CalledProcessError: Error during ``loadkeys``
     """
-    mode = '--unicode' if unicode else '--ascii'
-    subprocess.check_call(['loadkeys', mode, '--bkeymap', src], stdout=dest)
+    cmd = ('loadkeys', '--unicode' if unicode else '--ascii', '--bkeymap', src)
+    logger.debug("Subprocess: %s", cmd)
+    subprocess.check_call(cmd, stdout=dest)
