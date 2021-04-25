@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import configparser
 import itertools
+import locale
 import logging
 import os
 import shlex
@@ -293,7 +294,10 @@ def entry_cmkcpiolist() -> None:
     # Keymap
     if config.keymap is not None and config.keymap[0] is not None:
         with open(config.keymap[1], 'wb') as keymap_bin:
-            mkramfs.keymap_build(config.keymap[0], keymap_bin)
+            mkramfs.keymap_build(
+                config.keymap[0], keymap_bin,
+                unicode=(locale.getdefaultlocale()[1] == 'UTF-8')
+            )
 
     # Init
     with open(config.init_path, 'w') as init_file:
@@ -423,7 +427,10 @@ def entry_cmkcpiodir() -> None:
     # Keymap
     if config.keymap is not None and config.keymap[0] is not None:
         with open(config.keymap[1], 'wb') as keymap_bin:
-            mkramfs.keymap_build(config.keymap[0], keymap_bin)
+            mkramfs.keymap_build(
+                config.keymap[0], keymap_bin,
+                unicode=(locale.getdefaultlocale()[1] == 'UTF-8')
+            )
 
     # Init
     with open(config.init_path, 'w') as init_file:

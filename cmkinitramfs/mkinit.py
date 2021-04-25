@@ -18,6 +18,7 @@ Use a :class:`io.StringIO` if you need to use strings rather than a stream.
 from __future__ import annotations
 
 import itertools
+import locale
 import os.path
 from enum import Enum, auto
 from shlex import quote
@@ -239,16 +240,20 @@ def do_cmdline(out: IO[str]) -> None:
     ))
 
 
-def do_keymap(out: IO[str], keymap_file: str) -> None:
+def do_keymap(out: IO[str], keymap_file: str, unicode: bool = True) -> None:
     """Load a keymap
 
     :param out: Stream to write into
     :param keymap_file: Absolute path of the file to load
+    :param unicode: Set the keyboard in unicode mode (rather than ASCII)
     """
     out.writelines((
         "echo 'Loading keymap'\n",
         f"[ -f {quote(keymap_file)} ] || ",
         _die(f'Failed to load keymap, file {keymap_file} not found'),
+        f"kbd_mode {'-u' if unicode else '-a'} || ",
+        _die('Failed to set keyboard mode to '
+             f"{'unicode' if unicode else 'ASCII'}"),
         f"loadkmap <{quote(keymap_file)} || ",
         _die(f'Failed to load keymap {keymap_file}'),
         "\n",
@@ -924,7 +929,8 @@ def mkinit(out: IO[str], root: Data, mounts: Optional[Iterable[Data]] = None,
         datatype.initialize(out)
     do_cmdline(out)
     if keymap is not None:
-        do_keymap(out, keymap)
+        do_keymap(out, keymap,
+                  unicode=(locale.getdefaultlocale()[1] == 'UTF-8'))
     do_break(out, Breakpoint.INIT)
     root.load(out)
     do_break(out, Breakpoint.ROOTFS)

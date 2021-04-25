@@ -1072,7 +1072,7 @@ def mkinitramfs(
             logging.debug("Not adding applet %s: file exists", applet)
 
 
-def keymap_build(src: str, dest: IO[bytes]) -> None:
+def keymap_build(src: str, dest: IO[bytes], unicode: bool = True) -> None:
     """Generate a binary keymap from a keymap name
 
     This keymap can then be loaded with ``loadkmap`` from the initramfs
@@ -1081,6 +1081,8 @@ def keymap_build(src: str, dest: IO[bytes]) -> None:
     :param src: Name of the keymap to convert, can be a keyboard layout name
         or a file path
     :param dest: Destination stream to write into
+    :param unicode: Generate a unicode keymap (rather than ASCII)
     :raises subprocess.CalledProcessError: Error during ``loadkeys``
     """
-    subprocess.check_call(['loadkeys', '--bkeymap', src], stdout=dest)
+    mode = '--unicode' if unicode else '--ascii'
+    subprocess.check_call(['loadkeys', mode, '--bkeymap', src], stdout=dest)
