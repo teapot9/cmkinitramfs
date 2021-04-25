@@ -17,10 +17,12 @@ Use a :class:`io.StringIO` if you need to use strings rather than a stream.
 
 from __future__ import annotations
 
+import itertools
 import os.path
 from enum import Enum, auto
 from shlex import quote
-from typing import FrozenSet, Iterable, IO, List, Optional, Set, Tuple
+from typing import (FrozenSet, Iterable, Iterator, IO, List, Optional, Set,
+                    Tuple)
 
 
 class Breakpoint(Enum):
@@ -330,6 +332,22 @@ class Data:
     _is_final: bool
     _is_loaded: bool
 
+    @staticmethod
+    def initialize(out: IO[str]) -> None:
+        """Initialize the data class
+
+        Initialize the environment for the use of this data class:
+        define needed functions and variables.
+        A Data class should be initialized only once in the init script,
+        before the first :meth:`Data.load` call of the class.
+
+        Default initialization is a no-op and should be redefined
+        by subclasses. Subclasses should call their parent :class:`Data`
+        class' :meth:`Data.initialize` method.
+
+        :param out: Stream to write into
+        """
+
     def __init__(self) -> None:
         self.files = set()
         self.execs = set()
@@ -370,6 +388,15 @@ class Data:
         return self.libs.union(
             *(k.deps_libs() for k in self._need + self._lneed)
         )
+
+    def iter_all_deps(self) -> Iterator[Data]:
+        """Recursivelly get dependencies
+
+        :return: Iterator over all the dependencies
+        """
+        for dep in itertools.chain(self._need, self._lneed):
+            yield dep
+            yield from dep.iter_all_deps()
 
     def is_final(self) -> bool:
         """Returns a :class:`bool` indicating if the :class:`Data` is final"""
@@ -690,6 +717,60 @@ class MountData(Data):
     filesystem: str
     options: str
 
+    @staticmethod
+    def __fun_fsck(out: IO[str]) -> None:
+        """Define the mount_fsck function
+
+        This function takes any number of arguments, which will be passed
+        to ``fsck``. This function checks the return code of the ``fsck``
+        command and acts accordingly.
+
+        This functions calls ``fsck`` with all the arguments it was called
+        with. It checks the return code of ``fsck`` and :
+
+        - No error: returns 0.
+        - Non fatal error: prints an error and returns 0.
+        - Non fatal error requiring reboot: prints an error and reboot.
+        - Fatal error: returns 1.
+
+        :param out: Stream to write into
+        """
+        fsck_err = {
+            1: "Filesystem errors corrected",
+            2: "System should be rebooted",
+            4: "Filesystem errors left uncorrected",
+            8: "Operational error",
+            16: "Usage or syntax error",
+            32: "Checking canceled by user request",
+            128: "Shared-library error",
+        }
+
+        out.writelines((
+            'mount_fsck()\n',
+            '{\n',
+            '\tfsck "$@"\n',
+            '\tfsck_ret=$?\n'
+            '\t[ "${fsck_ret}" -eq 0 ] && return 0\n',
+        ))
+        for err_code, err_str in fsck_err.items():
+            out.writelines((
+                f'\t[ "$((fsck_ret & {err_code}))" -eq {err_code} ] && ',
+                'printk ', quote(f"fsck: {err_str}"), '\n',
+            ))
+        # 252 = 4 | 8 | 16 | 32 | 64 | 128
+        out.writelines((
+            '\t[ "$((fsck_ret & 252))" -ne 0 ] && return 1\n',
+            '\tif [ "$((fsck_ret & 2))" -eq 2 ]; then ',
+            'printk \'Rebooting...\'; reboot -f; fi\n',
+            '\treturn 0\n',
+            '}\n',
+            '\n',
+        ))
+
+    @staticmethod
+    def initialize(out: IO[str]) -> None:
+        MountData.__fun_fsck(out)
+
     def __init__(self, source: Data, mountpoint: str, filesystem: str,
                  options: str = "ro"):
         super().__init__()
@@ -720,7 +801,7 @@ class MountData(Data):
     def load(self, out: IO[str]) -> None:
         fsck = (
             "FSTAB_FILE=/dev/null ",
-            f'fsck -t {quote(self.filesystem)} {self.source.path()} || ',
+            f'mount_fsck -t {quote(self.filesystem)} {self.source.path()} || ',
             _die(f'Failed to check filesystem {self}'),
         ) if self.source.path() != 'none' else ()
         mkdir = (
@@ -857,9 +938,17 @@ def mkinit(out: IO[str], root: Data, mounts: Optional[Iterable[Data]] = None,
     if init is None:
         init = '/sbin/init'
 
+    datatypes = set()
+    for data in itertools.chain((root,), mounts):
+        datatypes.add(type(data))
+        for dep in data.iter_all_deps():
+            datatypes.add(type(dep))
+
     do_header(out)
     do_break(out, Breakpoint.EARLY)
     do_init(out)
+    for datatype in datatypes:
+        datatype.initialize(out)
     do_cmdline(out)
     if keymap is not None:
         do_keymap(out, keymap)

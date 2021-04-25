@@ -34,8 +34,8 @@ mkinit
 .. autofunction:: do_switch_root
 
 .. autoclass:: Data
-   :members: deps_files, deps_execs, deps_libs, is_final, set_final,
-        add_dep, add_load_dep, load, unload, path
+   :members: initialize, deps_files, deps_execs, deps_libs, iter_all_deps,
+      is_final, set_final, add_dep, add_load_dep, load, unload, path
    :private-members: _pre_load, _post_load, _pre_unload, _post_unload
    :special-members: __str__
    :show-inheritance:
@@ -53,6 +53,7 @@ mkinit
    :show-inheritance:
 
 .. autoclass:: MountData
+   :private-members: __fun_fsck
    :show-inheritance:
 
 .. autoclass:: MdData
