@@ -336,8 +336,8 @@ class Data:
     _is_final: bool
     _is_loaded: bool
 
-    @staticmethod
-    def initialize(out: IO[str]) -> None:
+    @classmethod
+    def initialize(cls, out: IO[str]) -> None:
         """Initialize the data class
 
         Initialize the environment for the use of this data class:
@@ -740,8 +740,9 @@ class MountData(Data):
             '\n',
         ))
 
-    @staticmethod
-    def initialize(out: IO[str]) -> None:
+    @classmethod
+    def initialize(cls, out: IO[str]) -> None:
+        super().initialize(out)
         MountData.__fun_fsck(out)
 
     def __init__(self, source: Data, mountpoint: str, filesystem: str,
