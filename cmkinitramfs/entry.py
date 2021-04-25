@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import itertools
 import logging
 import os
 import shlex
@@ -44,11 +45,11 @@ class Config:
     :param init: Init path to launch at the end of the init script
         (``switch_root``)
     :param files: User configured files,
-        see :meth:`cmkinitramfs.mkinit.Data.deps_files`
+        see :attr:`cmkinitramfs.mkinit.Data.files`
     :param execs: User configured executables,
-        see :meth:`cmkinitramfs.mkinit.Data.deps_files`
+        see :attr:`cmkinitramfs.mkinit.Data.files`
     :param libs: User configured libraries,
-        see :meth:`cmkinitramfs.mkinit.Data.deps_files`
+        see :attr:`cmkinitramfs.mkinit.Data.files`
     :param init_path: Path where the init script will be generated
     :param cmkcpiodir_opts: Default options for cmkcpiodir
     :param cmkcpiolist_opts: Default options for cmkcpiolist
@@ -154,17 +155,29 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     )
 
     # Define needed files, execs and libs
-    files = root.deps_files().union(*(k.deps_files() for k in mounts))
+    files = set()
+    for data in itertools.chain({root}, mounts):
+        files |= data.files
+        for ddep in data.iter_all_deps():
+            files |= ddep.files
     for line in config['DEFAULT'].get('files', '').split('\n'):
         if line:
             src, *dest = line.split(':')
             files.add((src, dest[0] if dest else None))
-    execs = root.deps_execs().union(*(k.deps_execs() for k in mounts))
+    execs = set()
+    for data in itertools.chain({root}, mounts):
+        execs |= data.execs
+        for ddep in data.iter_all_deps():
+            execs |= ddep.execs
     for line in config['DEFAULT'].get('execs', '').split('\n'):
         if line:
             src, *dest = line.split(':')
             execs.add((src, dest[0] if dest else None))
-    libs = root.deps_libs().union(*(k.deps_libs() for k in mounts))
+    libs = set()
+    for data in itertools.chain({root}, mounts):
+        libs |= data.libs
+        for ddep in data.iter_all_deps():
+            libs |= ddep.libs
     for line in config['DEFAULT'].get('libs', '').split('\n'):
         if line:
             src, *dest = line.split(':')

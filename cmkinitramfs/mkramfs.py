@@ -1017,13 +1017,13 @@ def mkinitramfs(
     :param files: Files to add to the initramfs, each tuple is in the format
         ``(src, dest)``. ``src`` is the path on the current system, ``dest``
         is the path within the initramfs. This is the same format as
-        described in :meth:`cmkinitramfs.mkinit.Data.deps_files`.
+        described in :attr:`cmkinitramfs.mkinit.Data.files`.
     :param execs: Executables to add to the initramfs. ``src`` can be the
         base name, it will be searched on the system with :func:`findexec`.
-        Same format as :meth:`cmkinitramfs.mkinit.Data.deps_files`.
+        Same format as :attr:`cmkinitramfs.mkinit.Data.files`.
     :param libs: Libraries to add to the initramfs. ``src`` can be the
         base name, it will be searched on the system with :func:`findlib`.
-        Same format as :meth:`cmkinitramfs.mkinit.Data.deps_files`.
+        Same format as :attr:`cmkinitramfs.mkinit.Data.files`.
     :param keymap: Tuple in the format ``(src, dest)``. ``src`` is the
         keymap to add to the initramfs, ``dest`` is the path of the keymap
         within the initramfs. If this argument is :data:`None`, no keymap

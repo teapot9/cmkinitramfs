@@ -34,8 +34,9 @@ mkinit
 .. autofunction:: do_switch_root
 
 .. autoclass:: Data
-   :members: initialize, deps_files, deps_execs, deps_libs, iter_all_deps,
-      is_final, set_final, add_dep, add_load_dep, load, unload, path
+   :members: initialize, iter_all_deps,
+      is_final, set_final, add_dep, add_load_dep,
+      load, unload, path
    :private-members: _pre_load, _post_load, _pre_unload, _post_unload
    :special-members: __str__
    :show-inheritance:

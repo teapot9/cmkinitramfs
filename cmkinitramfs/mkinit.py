@@ -312,11 +312,15 @@ class Data:
     from being unloaded.
 
     :param files: Files directly needed in the initramfs.
-        Same format as :meth:`deps_files`.
+        Each file is a tuple in the format (``src``, ``dest``),
+        where ``src`` is the source file on the current system,
+        and ``dest`` is the destination in the initramfs
+        (relative to its root directory).
+        If ``dest`` is :data:`None`, then ``src`` is used.
     :param execs: Executables directly needed in the initramfs.
-        Same format as :meth:`deps_files`.
+        Same format as :attr:`files`.
     :param libs: Libraries directly needed in the initramfs.
-        Same format as :meth:`deps_files`.
+        Same format as :attr:`files`.
     :param _need: Loading and runtime dependencies
     :param _lneed: Loading only dependencies
     :param _needed_by: Reverse dependencies
@@ -357,37 +361,6 @@ class Data:
         self._needed_by = []
         self._is_final = False
         self._is_loaded = False
-
-    def deps_files(self) -> Set[Tuple[str, Optional[str]]]:
-        """Recursivelly get files needed in the initramfs
-
-        :return: Each file is a tuple in the format (``src``, ``dest``),
-            where ``src`` is the source file on the current system,
-            and ``dest`` is the destination in the initramfs
-            (relative to its root directory).
-            If ``dest`` is :data:`None`, then ``src`` is used.
-        """
-        return self.files.union(
-            *(k.deps_files() for k in self._need + self._lneed)
-        )
-
-    def deps_execs(self) -> Set[Tuple[str, Optional[str]]]:
-        """Recursivelly get executables needed in the initramfs
-
-        :return: Dependencies in the same format as :meth:`deps_files`.
-        """
-        return self.execs.union(
-            *(k.deps_execs() for k in self._need + self._lneed)
-        )
-
-    def deps_libs(self) -> Set[Tuple[str, Optional[str]]]:
-        """Recursivelly get libraries needed in the initramfs
-
-        :return: Dependencies in the same format as :meth:`deps_files`.
-        """
-        return self.libs.union(
-            *(k.deps_libs() for k in self._need + self._lneed)
-        )
 
     def iter_all_deps(self) -> Iterator[Data]:
         """Recursivelly get dependencies
