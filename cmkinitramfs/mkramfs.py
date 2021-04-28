@@ -79,7 +79,7 @@ def parse_ld_path(ld_path: Optional[str] = None, origin: str = '',
 
     for path in ld_path.split(':'):
         if not path:
-            yield normpath(root + os.getcwd())
+            yield normpath(os.getcwd())
         else:
             for k in (('$ORIGIN', origin), ('${ORIGIN}', origin)):
                 path = path.replace(*k)
@@ -406,7 +406,7 @@ def parse_path(path: Optional[str] = None, root: str = '/') \
 
     for k in path.split(':'):
         if not k:
-            yield normpath(root + '/' + os.getcwd())
+            yield normpath(os.getcwd())
         else:
             yield normpath(root + '/' + k)
 
