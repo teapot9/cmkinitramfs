@@ -271,6 +271,17 @@ Usage
 cmkinit
 -------
 
+.. code-block:: console
+
+   $ cmkinit --help
+   usage: cmkinit [-h] [--version]
+
+   Build an init script
+
+   optional arguments:
+     -h, --help  show this help message and exit
+     --version   show program's version number and exit
+
 Running ``cmkinit`` will generate an init script and output it to stdout.
 No options are available, everything is defined in the configuration file.
 The ``CMKINITCFG`` environment variable may be defined to use a custom
@@ -282,24 +293,32 @@ cmkcpiodir
 .. code-block:: console
 
    $ cmkcpiodir --help
-   usage: cmkcpiodir [-h] [--version] [--only-build-archive | --only-build-directory] [--debug] [--keep] [--clean] [--verbose] [--quiet] [--output OUTPUT] [--build-dir BUILD_DIR]
+   usage: cmkcpiodir [-h] [--version] [--debug] [--verbose] [--quiet]
+                     [--output OUTPUT] [--binroot BINROOT]
+                     [--only-build-archive | --only-build-directory] [--keep]
+                     [--clean] [--build-dir BUILD_DIR]
 
    Build an initramfs using a directory.
 
    optional arguments:
      -h, --help            show this help message and exit
      --version             show program's version number and exit
-     --only-build-archive, -c
-                           only build the CPIO archive from an existing initramfs directory
-     --only-build-directory, -D
-                           only build the initramfs directory, implies -k
      --debug, -d           debugging mode: non-root, implies -k
-     --keep, -k            keep the created initramfs directory
-     --clean, -C           overwrite temporary directory if it exists, use carefully
      --verbose, -v         be verbose
      --quiet, -q           be quiet (can be repeated)
      --output OUTPUT, -o OUTPUT
                            set the output of the CPIO archive
+     --binroot BINROOT, -r BINROOT
+                           set the root directory for binaries (executables and
+                           libraries)
+     --only-build-archive, -c
+                           only build the CPIO archive from an existing initramfs
+                           directory
+     --only-build-directory, -D
+                           only build the initramfs directory, implies -k
+     --keep, -k            keep the created initramfs directory
+     --clean, -C           overwrite temporary directory if it exists, use
+                           carefully
      --build-dir BUILD_DIR, -b BUILD_DIR
                            set the location of the initramfs directory
 
@@ -315,23 +334,29 @@ cmkcpiolist
 .. code-block:: console
 
    $ cmkcpiolist --help
-   usage: cmkcpiolist [-h] [--version] [--only-build-archive | --only-build-list] [--debug] [--keep] [--verbose] [--quiet] [--output OUTPUT] [--cpio-list CPIO_LIST]
+   usage: cmkcpiolist [-h] [--version] [--debug] [--verbose] [--quiet]
+                      [--output OUTPUT] [--binroot BINROOT]
+                      [--only-build-archive | --only-build-list] [--keep]
+                      [--cpio-list CPIO_LIST]
 
    Build an initramfs using a CPIO list
 
    optional arguments:
      -h, --help            show this help message and exit
      --version             show program's version number and exit
+     --debug, -d           debugging mode: non-root, implies -k
+     --verbose, -v         be verbose
+     --quiet, -q           be quiet (can be repeated)
+     --output OUTPUT, -o OUTPUT
+                           set the output of the CPIO archive
+     --binroot BINROOT, -r BINROOT
+                           set the root directory for binaries (executables and
+                           libraries)
      --only-build-archive, -c
                            only build the CPIO archive from an existing CPIO list
      --only-build-list, -L
                            only build the CPIO list, implies -k
-     --debug, -d           debugging mode: non-root, implies -k
      --keep, -k            keep the created CPIO list
-     --verbose, -v         be verbose
-     --quiet, -q           be quiet (can be repeated)
-     --output OUTPUT, -o OUTPUT
-                           set the output of the CPIO archive (can be set in the configuration file)
      --cpio-list CPIO_LIST, -l CPIO_LIST
                            set the location of the CPIO list
 

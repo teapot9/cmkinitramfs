@@ -263,6 +263,10 @@ def _common_parser_cmkcpio() -> argparse.ArgumentParser:
         "--output", "-o", type=str, default='/usr/src/initramfs.cpio',
         help="set the output of the CPIO archive"
     )
+    parser.add_argument(
+        '--binroot', '-r', type=str, default='/',
+        help="set the root directory for binaries (executables and libraries)"
+    )
     return parser
 
 
@@ -324,8 +328,11 @@ def entry_cmkcpiolist() -> None:
     if not args.only_build_archive:
         assert config.init_path is not None
         logger.info("Creating initramfs")
-        initramfs = mkramfs.Initramfs() if not args.debug \
-            else mkramfs.Initramfs(user=os.getuid(), group=os.getgid())
+        initramfs = mkramfs.Initramfs(
+            user=(0 if not args.debug else os.getuid()),
+            group=(0 if not args.debug else os.getgid()),
+            binroot=args.binroot,
+        )
         mkramfs.mkinitramfs(
             initramfs=initramfs,
             init=config.init_path,
@@ -428,8 +435,11 @@ def entry_cmkcpiodir() -> None:
     if not args.only_build_archive:
         assert config.init_path is not None
         logger.info("Creating initramfs")
-        initramfs = mkramfs.Initramfs() if not args.debug \
-            else mkramfs.Initramfs(user=os.getuid(), group=os.getgid())
+        initramfs = mkramfs.Initramfs(
+            user=(0 if not args.debug else os.getuid()),
+            group=(0 if not args.debug else os.getgid()),
+            binroot=args.binroot,
+        )
         mkramfs.mkinitramfs(
             initramfs=initramfs,
             init=config.init_path,

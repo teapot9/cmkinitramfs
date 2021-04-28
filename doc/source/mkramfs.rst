@@ -5,6 +5,11 @@ mkramfs
 .. automodule:: cmkinitramfs.mkramfs
    :platform: Linux
 
+.. autoclass:: ELFIncompatibleError
+   :show-inheritance:
+
+.. autofunction:: normpath
+
 .. autofunction:: parse_ld_path
 
 .. autofunction:: parse_ld_so_conf_iter
@@ -17,6 +22,8 @@ mkramfs
 
 .. autofunction:: _is_elf_compatible
 
+.. autofunction:: _get_elf_arch
+
 .. autofunction:: _find_elf_deps_iter
 
 .. autofunction:: find_elf_deps_iter
@@ -24,6 +31,8 @@ mkramfs
 .. autofunction:: find_elf_deps_set
 
 .. autofunction:: findlib
+
+.. autofunction:: parse_path
 
 .. autofunction:: findexec
 

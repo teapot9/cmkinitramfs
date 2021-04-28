@@ -29,12 +29,11 @@ import shutil
 import socket
 import stat
 import subprocess
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import (FrozenSet, IO, Iterable, Iterator, List, Optional, Set,
-                    Tuple)
+                    Tuple, Union)
 
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
@@ -44,8 +43,20 @@ logger = logging.getLogger(__name__)
 BINARY_KEYMAP_MAGIC = b'bkeymap'
 
 
-def parse_ld_path(ld_path: Optional[str] = None, origin: str = '') \
-        -> Iterator[str]:
+class ELFIncompatibleError(ELFFile):
+    """The ELF files are incompatible"""
+
+
+def normpath(path: str) -> str:
+    """Normalize path (actually eliminates double slashes)
+
+    :param path: Path to normalize
+    """
+    return os.path.normpath(path).replace('//', '/')
+
+
+def parse_ld_path(ld_path: Optional[str] = None, origin: str = '',
+                  root: str = '/') -> Iterator[str]:
     """Parse a colon-delimited list of paths and apply ldso rules
 
     Note the special handling as dictated by the ldso:
@@ -56,6 +67,7 @@ def parse_ld_path(ld_path: Optional[str] = None, origin: str = '') \
         ``LD_LIBRARY_PATH`` environment variable
     :param origin: Directory containing the ELF file being parsed
         (used for $ORIGIN), defaults to an empty string
+    :param root: Path to prepend to all paths found
     :return: Iterator over the processed paths
     """
 
@@ -67,21 +79,28 @@ def parse_ld_path(ld_path: Optional[str] = None, origin: str = '') \
 
     for path in ld_path.split(':'):
         if not path:
-            yield os.getcwd()
+            yield normpath(root + os.getcwd())
         else:
             for k in (('$ORIGIN', origin), ('${ORIGIN}', origin)):
                 path = path.replace(*k)
-            yield path
+            yield normpath(root + path)
 
 
-def parse_ld_so_conf_iter(conf_path: str = '/etc/ld.so.conf') -> Iterator[str]:
+def parse_ld_so_conf_iter(conf_path: Optional[str] = None, root: str = '/') \
+        -> Iterator[str]:
     """Parse a ldso config file
 
     This should handle comments, whitespace, and "include" statements.
 
-    :param conf_path: Path of the ldso config file to parse
+    :param conf_path: Path of the ldso config file to parse,
+        defaults to ``{root}/etc/ld.so.conf``
+    :param root: Path to prepend to all paths found
     :return: Iterator over the processed paths
     """
+    if conf_path is None:
+        conf_path = normpath(root + '/etc/ld.so.conf')
+        if not os.path.isfile(conf_path):
+            return
     logger.debug("Parsing ld.so.conf %s", conf_path)
 
     with open(conf_path, 'r') as conf_file:
@@ -94,44 +113,55 @@ def parse_ld_so_conf_iter(conf_path: str = '/etc/ld.so.conf') -> Iterator[str]:
                 if line[0] != '/':
                     line = os.path.dirname(conf_path) + '/' + line
                 for path in sorted(glob.glob(line)):
-                    yield from parse_ld_so_conf_iter(path)
+                    yield from parse_ld_so_conf_iter(
+                        normpath(root + path), root
+                    )
             else:
-                yield line
+                yield normpath(root + line)
 
 
 @functools.lru_cache()
-def parse_ld_so_conf_tuple(conf_path: str = '/etc/ld.so.conf') \
+def parse_ld_so_conf_tuple(conf_path: Optional[str] = None, root: str = '/') \
         -> Tuple[str, ...]:
     """Parse a ldso config file
 
     Cached version of :func:`parse_ld_so_conf_iter`, returning a tuple.
 
-    :param conf_path: Path of the ldso config file to parse
+    :param conf_path: Path of the ldso config file to parse,
+        defaults to ``{root}/etc/ld.so.conf``
+    :param root: Path to prepend to all paths found
     :return: Tuple with the processed paths
     """
-    return tuple(parse_ld_so_conf_iter(conf_path))
+    return tuple(parse_ld_so_conf_iter(conf_path, root))
 
 
 @functools.lru_cache()
-def _get_default_libdirs() -> Tuple[str, ...]:
-    """Get the default library directories"""
+def _get_default_libdirs(root: str = '/') -> Tuple[str, ...]:
+    """Get the default library directories
+
+    :param root: Root directory to check for library directories
+    :return: Libdirs in the initramfs
+    """
     libdirs = []
     for lib in ('lib64', 'lib', 'lib32'):
         for prefix in ('/', '/usr/'):
-            if os.path.exists(prefix + lib):
-                libdirs.append(prefix + lib)
+            path = normpath(root + prefix + lib)
+            if os.path.exists(path):
+                libdirs.append(path)
     return tuple(libdirs)
 
 
 @functools.lru_cache()
-def _get_libdir(arch: int) -> str:
+def _get_libdir(arch: int, root: str = '/') -> str:
     """Get the libdir corresponding to a binary class
 
     :param arch: Binary class (e.g. :data:`32` or :data:`64`)
+    :param root: Directory where libdirs are searched
+    :return: Libdir in the initramfs
     """
-    if arch == 64 and os.path.exists('/lib64'):
+    if arch == 64 and os.path.exists(root + '/lib64'):
         return '/lib64'
-    if arch == 32 and os.path.exists('/lib32'):
+    if arch == 32 and os.path.exists(root + '/lib32'):
         return '/lib32'
     return '/lib'
 
@@ -159,7 +189,30 @@ def _is_elf_compatible(elf1: ELFFile, elf2: ELFFile) -> bool:
     )
 
 
-def _find_elf_deps_iter(elf: ELFFile, origin: str) \
+def _get_elf_arch(elf1: Union[ELFFile, str], elf2: Union[ELFFile, str]) -> int:
+    """Open elf2, check compatibility, and return ELF architecture
+
+    :param elf1: First ELF
+    :param elf2: Second ELF
+    :return: Architecture of the ELF files (32 or 64)
+    :raises OSError: Could not open an ELF file
+    :raises ELFIncompatibleError: ELFs are incompatible
+    :raises ELFError: File is not an ELF file
+    """
+
+    # Convert string to ELFFile
+    if isinstance(elf1, str):
+        with open(elf1, 'rb') as elf_file:
+            return _get_elf_arch(ELFFile(elf_file), elf2)
+    if isinstance(elf2, str):
+        with open(elf2, 'rb') as elf_file:
+            return _get_elf_arch(elf1, ELFFile(elf_file))
+    if not _is_elf_compatible(elf1, elf2):
+        raise ELFIncompatibleError("Incompatible ELF binaries")
+    return elf1.elfclass
+
+
+def _find_elf_deps_iter(elf: ELFFile, origin: str, root: str = '/') \
         -> Iterator[Tuple[str, str]]:
     """Iterates over the dependencies of an ELF file
 
@@ -168,6 +221,7 @@ def _find_elf_deps_iter(elf: ELFFile, origin: str) \
     :param elf: Elf file to parse
     :param origin: Directory containing the ELF binary (real path as provided
         by :func:`os.path.realpath`, used for $ORIGIN)
+    :param root: Path to prepend to all paths found
     :return: Same as :func:`find_elf_deps_iter`
     :raises FileNotFoundError: Dependency not found
     """
@@ -185,9 +239,9 @@ def _find_elf_deps_iter(elf: ELFFile, origin: str) \
         elif segment.header.p_type == 'PT_DYNAMIC':
             for tag in segment.iter_tags():
                 if tag.entry.d_tag == 'DT_RPATH':
-                    rpaths.extend(parse_ld_path(tag.rpath, origin))
+                    rpaths.extend(parse_ld_path(tag.rpath, origin, root))
                 elif tag.entry.d_tag == 'DT_RUNPATH':
-                    runpaths.extend(parse_ld_path(tag.runpath, origin))
+                    runpaths.extend(parse_ld_path(tag.runpath, origin, root))
                 elif tag.entry.d_tag == 'DT_NEEDED':
                     deps.append(tag.needed)
                 elif tag.entry.d_tag == 'DT_FLAGS_1':
@@ -198,50 +252,44 @@ def _find_elf_deps_iter(elf: ELFFile, origin: str) \
                  deps, rpaths, runpaths, nodeflib)
 
     # Directories in which dependencies will be searched
-    search_paths = tuple(itertools.chain(
-        rpaths, parse_ld_path(None, origin), runpaths,
-        parse_ld_so_conf_tuple(), _get_default_libdirs()
+    search_paths_base = tuple(itertools.chain(
+        rpaths, parse_ld_path(None, origin, root), runpaths,
+        parse_ld_so_conf_tuple(root=root), _get_default_libdirs(root)
     ))
 
     for dep in deps:
 
-        # No need to search an absolute dependency
-        if os.path.isabs(dep):
-            logger.debug("Dependency is absolute: %s", dep)
-            yield dep, dep
-            continue
+        search_paths = search_paths_base \
+            if not os.path.isabs(dep) else (root,)
 
+        # Search the dependency
         for found_dir in search_paths:
-            found_path = os.path.join(found_dir, dep)
+            found_path = normpath(found_dir + '/' + dep)
 
             # Check found_path is valid and compatible
-            if not os.path.exists(found_path):
+            if nodeflib and found_dir in _get_default_libdirs(root):
                 continue
-            if nodeflib and found_dir in _get_default_libdirs():
+            try:
+                found_arch = _get_elf_arch(elf, found_path)
+            except (ELFError, OSError):
                 continue
-            with open(found_path, 'rb') as found_file:
-                try:
-                    found_elf = ELFFile(found_file)
-                except ELFError:
-                    continue
-                if not _is_elf_compatible(elf, found_elf):
-                    continue
-                found_arch = found_elf.elfclass
 
             # Lib found
-            logger.debug("Found %s in %s", dep, found_dir)
-            if found_dir in itertools.chain(rpaths, runpaths):
+            if os.path.isabs(dep) \
+                    or found_dir in itertools.chain(rpaths, runpaths):
                 # Libdir in R*PATH: use the same path
-                yield found_path, found_path
+                dest = normpath('/' + found_path.removeprefix(root))
             else:
                 # Libdir in ld_path or ld.so.conf: use default libdir
-                yield found_path, os.path.join(_get_libdir(found_arch), dep)
+                dest = normpath(_get_libdir(found_arch, root) + '/' + dep)
+            logger.debug("Found %s in %s (dest: %s)", dep, found_dir, dest)
+            yield found_path, dest
             break
         else:
             raise FileNotFoundError(f"ELF dependency not found: {dep}")
 
 
-def find_elf_deps_iter(src: str) -> Iterator[Tuple[str, str]]:
+def find_elf_deps_iter(src: str, root: str = '/') -> Iterator[Tuple[str, str]]:
     """Iterates over the dependencies of an ELF file
 
     Read an ELF file to search dynamic library dependencies. For each
@@ -255,6 +303,7 @@ def find_elf_deps_iter(src: str) -> Iterator[Tuple[str, str]]:
     If the file is not an ELF file, returns an empty iterator.
 
     :param src: File to find dependencies for
+    :param root: Path to prepend to all paths found
     :return: Iterator of ``(dep_src, dep_dest)``, with ``dep_src`` the path
         of the dependency on the current system, and ``dep_dest`` the
         path of the dependency on the initramfs
@@ -263,7 +312,7 @@ def find_elf_deps_iter(src: str) -> Iterator[Tuple[str, str]]:
     logger.debug("Searching ELF dependencies for %s", src)
 
     if src != os.path.realpath(src):
-        yield from find_elf_deps_iter(os.path.realpath(src))
+        yield from find_elf_deps_iter(os.path.realpath(src), root)
         return
 
     with open(src, 'rb') as src_file:
@@ -271,26 +320,28 @@ def find_elf_deps_iter(src: str) -> Iterator[Tuple[str, str]]:
             elf = ELFFile(src_file)
         except ELFError:
             return
-        yield from _find_elf_deps_iter(elf, os.path.dirname(src))
+        yield from _find_elf_deps_iter(elf, os.path.dirname(src), root)
     logger.debug("Found all ELF dependencies for %s", src)
 
 
 @functools.lru_cache()
-def find_elf_deps_set(src: str) -> FrozenSet[Tuple[str, str]]:
+def find_elf_deps_set(src: str, root: str = '/') -> FrozenSet[Tuple[str, str]]:
     """Find dependencies of an ELF file
 
     Cached version of :func:`find_elf_deps_iter`.
 
     :param src: File to find dependencies for
+    :param root: Path to prepend to all paths found
     :return: Set of ``(dep_src, dep_dest)``, see :func:`find_elf_deps_iter`.
     :raises FileNotFoundError: Dependency not found
     """
     if src != os.path.realpath(src):
-        return find_elf_deps_set(os.path.realpath(src))
-    return frozenset(find_elf_deps_iter(src))
+        return find_elf_deps_set(os.path.realpath(src), root)
+    return frozenset(find_elf_deps_iter(src, root))
 
 
-def findlib(lib: str, compat: str = sys.executable) -> Tuple[str, str]:
+def findlib(lib: str, compat: Optional[str] = None,
+            root: str = '/') -> Tuple[str, str]:
     """Search a library in the system
 
     Uses ``ld.so.conf`` and ``LD_LIBRARY_PATH``.
@@ -301,67 +352,111 @@ def findlib(lib: str, compat: str = sys.executable) -> Tuple[str, str]:
     :param lib: Library to search (e.g. ``libgcc_s.so.1``)
     :param compat: Path to a binary that the library must be compatible with
         (checked with :func:`_is_elf_compatible`),
-        defaults to :data:`sys.executable`
+        defaults to ``{root}/bin/sh``
+    :param root: Path to prepend to all paths found
     :return: ``(lib_src, lib_dest)``, with ``lib_src`` the absolute path
         of the library on the current system, and ``lib_dest`` the absolute
         path of the library on the initramfs
     :raises FileNotFoundError: Library not found
     """
-    logger.debug("Searching library %s", lib)
+    if compat is None:
+        compat = normpath(root + '/bin/sh')
+    logger.debug("Searching library %s (compat: %s)", lib, compat)
+
     libname = os.path.basename(lib)
     with open(compat, 'rb') as pyexec:
         pyelf = ELFFile(pyexec)
 
-        if os.path.isfile(lib):
-            return lib, os.path.join(_get_libdir(pyelf.elfclass), libname)
-
+        # If path is absolute: only search in root
         search_paths = itertools.chain(
-            parse_ld_path(), parse_ld_so_conf_tuple(),
-            _get_default_libdirs()
-        )
-        for found_dir in search_paths:
-            found_path = os.path.join(found_dir, libname)
+            (os.getcwd(),),
+            parse_ld_path(root=root),
+            parse_ld_so_conf_tuple(root=root),
+            _get_default_libdirs(root)
+        ) if not os.path.isabs(lib) else (root,)
 
-            if not os.path.exists(found_path):
+        for found_dir in search_paths:
+            found_path = found_dir + '/' + libname
+
+            try:
+                found_arch = _get_elf_arch(pyelf, found_path)
+            except (ELFError, OSError):
                 continue
-            with open(found_path, 'rb') as found_stream:
-                try:
-                    found_elf = ELFFile(found_stream)
-                except ELFError:
-                    continue
-                if not _is_elf_compatible(pyelf, found_elf):
-                    continue
-                found_arch = found_elf.elfclass
-            return found_path, os.path.join(_get_libdir(found_arch), libname)
+            dest = normpath(_get_libdir(found_arch, root) + '/' + libname)
+            logger.debug("Found %s in %s (dest: %s)", lib, found_dir, dest)
+            return found_path, dest
 
     raise FileNotFoundError(lib)
 
 
-def findexec(executable: str) -> str:
+def parse_path(path: Optional[str] = None, root: str = '/') \
+        -> Iterator[str]:
+    """Parse PATH variable
+
+    :param path: PATH string to parse,
+        default to the ``PATH`` environment variable
+    :param root: Path to prepend to all paths found
+    :return: Iterator over the processed paths
+    """
+    if path is None:
+        path = os.environ.get('PATH')
+        if path is None:
+            return
+    logger.debug("Parsing path %s", path)
+
+    for k in path.split(':'):
+        if not k:
+            yield normpath(root + '/' + os.getcwd())
+        else:
+            yield normpath(root + '/' + k)
+
+
+def findexec(executable: str, compat: Optional[str] = None, root: str = '/') \
+        -> Tuple[str, str]:
     """Search an executable in the system
 
     Uses the ``PATH`` environment variable.
 
     :param executable: Executable to search
+    :param compat: Path to a binary that the executable must be compatible with
+        (checked with :func:`_is_elf_compatible`),
+        defaults to ``{root}/bin/sh``
+    :param root: Path to prepend to all paths found
+    :return: ``(src_path, dest_path)`` with ``src_path`` the path of the
+        executable on ``root``, and ``dest_path`` the default path of the
+        executable on the initramfs.
     :return: Absolute path of the executable
     :raises FileNotFoundError: Executable not found
     """
-    logger.debug("Searching executable %s", executable)
+    if compat is None:
+        compat = normpath(root + '/bin/sh')
+    logger.debug("Searching executable %s (compat: %s)", executable, compat)
 
-    if os.path.isfile(executable):
-        return executable
-
-    # Get set of directories to search
-    execdirs = set()
-    if os.environ.get('PATH') is not None:
-        for k in os.environ['PATH'].split(':'):
-            if k:
-                execdirs.add(k)
+    # Get list of directories to search
+    execdirs = itertools.chain((os.getcwd(),), parse_path(root=root)) \
+        if not os.path.isabs(executable) else (root,)
 
     # Parse directories
-    for execdir in execdirs:
-        if os.path.isfile(f"{execdir}/{executable}"):
-            return f"{execdir}/{executable}"
+    execname = os.path.basename(executable)
+    with open(compat, 'rb') as compat_file:
+        compat_elf = ELFFile(compat_file)
+
+        for found_dir in execdirs:
+            found_path = normpath(found_dir + '/' + execname)
+
+            # Check for compatibility
+            if not os.access(found_path, mode=os.X_OK):
+                continue
+            try:
+                _get_elf_arch(compat_elf, found_path)
+            except (ELFIncompatibleError, OSError):
+                continue
+            except ELFError:
+                pass
+            dest = normpath('/' + found_path.removeprefix(root))
+            logger.debug("Found %s in %s (dest: %s)",
+                         executable, found_dir, dest)
+            return found_path, dest
     raise FileNotFoundError(executable)
 
 
@@ -808,15 +903,20 @@ class Initramfs:
 
     :param user: Default user to use when creating items
     :param group: Default group to use when creating items
+    :param binroot: Root directory where binary files are found
+        (executables and libraries)
     :param items: Items in the initramfs
     """
     user: int
     group: int
+    binroot: str
     items: List[Item]
 
-    def __init__(self, user: int = 0, group: int = 0) -> None:
+    def __init__(self, user: int = 0, group: int = 0, binroot: str = '/') \
+            -> None:
         self.user = user
         self.group = group
+        self.binroot = binroot
         self.items = []
         self.__mklayout()
 
@@ -898,6 +998,8 @@ class Initramfs:
 
         if not all(parents.values()):
             missings = tuple(k for k in parents if not parents[k])
+            logger.error("Cannot add %s: missing directories %s",
+                         new_item, missings)
             raise MergeError(f"Missing directory: {missings}")
         if mergeable is not None:
             mergeable.merge(new_item)
@@ -923,12 +1025,12 @@ class Initramfs:
         if not os.path.isabs(path):
             raise ValueError(f"{path} is not an absolute path")
         # Strip /usr directory, not needed in initramfs
-        if "/usr/local/" in path:
+        if path.startswith('/usr/local/'):
             logger.debug("Stripping /usr/local/ from %s", path)
-            path = path.replace("/usr/local", "/")
-        elif "/usr/" in path:
+            path = path.removeprefix('/usr/local')
+        elif path.startswith('/usr/'):
             logger.debug("Stripping /usr/ from %s", path)
-            path = path.replace("/usr/", "/")
+            path = path.removeprefix('/usr')
         # Check whitespaces
         if ' ' in path or '\t' in path or '\n' in path:
             logger.warning("Whitespaces are not supported by gen_init_cpio: "
@@ -966,7 +1068,7 @@ class Initramfs:
         logger.debug("Adding %s as %s", src, dest)
 
         # Copy dependencies
-        for dep_src, dep_dest in find_elf_deps_set(src):
+        for dep_src, dep_dest in find_elf_deps_set(src, self.binroot):
             self.add_file(dep_src, dep_dest)
 
         # Add file
@@ -1048,10 +1150,11 @@ def mkinitramfs(
         initramfs.add_file(fsrc, fdest)
     for fsrc, fdest in execs:
         logger.info("Adding executable %s", fsrc)
-        initramfs.add_file(findexec(fsrc), fdest)
+        exec_src, exec_dest = findexec(fsrc, root=initramfs.binroot)
+        initramfs.add_file(exec_src, fdest if fdest is not None else exec_dest)
     for fsrc, fdest in libs:
         logger.info("Adding library %s", fsrc)
-        lib_src, lib_dest = findlib(fsrc)
+        lib_src, lib_dest = findlib(fsrc, root=initramfs.binroot)
         initramfs.add_file(lib_src, fdest if fdest is not None else lib_dest)
 
     # Add keymap
@@ -1068,11 +1171,11 @@ def mkinitramfs(
 
     # Add busybox
     logger.info("Adding busybox")
-    busybox = findexec('busybox')
-    initramfs.add_file(busybox)
-    for applet in busybox_get_applets(busybox):
+    busybox_src, busybox_dest = findexec('busybox', root=initramfs.binroot)
+    initramfs.add_file(busybox_src, busybox_dest)
+    for applet in busybox_get_applets(findexec('busybox')[0]):
         try:
-            initramfs.add_file(busybox, applet)
+            initramfs.add_file(busybox_src, applet)
         except MergeError:
             logging.debug("Not adding applet %s: file exists", applet)
 
