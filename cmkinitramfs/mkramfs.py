@@ -25,6 +25,7 @@ import hashlib
 import itertools
 import logging
 import os
+import platform
 import socket
 import stat
 import subprocess
@@ -76,13 +77,19 @@ def parse_ld_path(ld_path: Optional[str] = None, origin: str = '',
             return
     logger.debug("Parsing ld_path %s", ld_path)
 
+    lib = 'lib64' if platform.architecture()[0] == '64bit' else 'lib'
+    platform_ = platform.machine()
     for path in ld_path.split(':'):
         if not path:
             yield normpath(os.getcwd())
         else:
-            for k in (('$ORIGIN', origin), ('${ORIGIN}', origin)):
+            for k in (('$ORIGIN', origin), ('${ORIGIN}', origin),
+                      ('$LIB', lib), ('${LIB}', lib),
+                      ('$PLATFORM', platform_), ('${PLATFORM}', platform_)):
                 path = path.replace(*k)
-            yield normpath(root + path)
+            if os.path.isabs(path):
+                path = root + '/' + path
+            yield normpath(path)
 
 
 def parse_ld_so_conf_iter(conf_path: Optional[str] = None, root: str = '/') \
@@ -242,7 +249,7 @@ def _find_elf_deps_iter(elf: ELFFile, origin: str, root: str = '/') \
                 elif tag.entry.d_tag == 'DT_RUNPATH':
                     runpaths.extend(parse_ld_path(tag.runpath, origin, root))
                 elif tag.entry.d_tag == 'DT_NEEDED':
-                    deps.append(tag.needed)
+                    deps.extend(parse_ld_path(tag.needed, origin, root))
                 elif tag.entry.d_tag == 'DT_FLAGS_1':
                     if tag.entry.d_val & ENUM_DT_FLAGS_1['DF_1_NODEFLIB']:
                         nodeflib = True
