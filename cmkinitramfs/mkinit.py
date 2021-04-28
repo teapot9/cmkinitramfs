@@ -260,24 +260,26 @@ def do_keymap(out: IO[str], keymap_file: str, unicode: bool = True) -> None:
     ))
 
 
-def do_break(out: IO[str], breakpoint: Breakpoint) -> None:
+def do_break(out: IO[str], breakpoint_: Breakpoint) -> None:
     """Drop into a shell if rd.break is set
 
     :param out: Stream to write into
-    :param breakpoint: Which breakpoint to check
+    :param breakpoint_: Which breakpoint to check
     """
-    if breakpoint is Breakpoint.EARLY:
+    if breakpoint_ is Breakpoint.EARLY:
         breakname = 'RD_BREAK_EARLY'
-    elif breakpoint is Breakpoint.INIT:
+    elif breakpoint_ is Breakpoint.INIT:
         breakname = 'RD_BREAK_INIT'
-    elif breakpoint is Breakpoint.ROOTFS:
+    elif breakpoint_ is Breakpoint.ROOTFS:
         breakname = 'RD_BREAK_ROOTFS'
-    elif breakpoint is Breakpoint.MOUNT:
+    elif breakpoint_ is Breakpoint.MOUNT:
         breakname = 'RD_BREAK_MOUNT'
+    else:
+        raise ValueError(f"Unknown breakpoint: {breakpoint_}")
 
     out.writelines((
         "[ -n \"${", breakname, "+x}\" ] && rescue_shell ",
-        quote(f"Reached {breakpoint}"),
+        quote(f"Reached {breakpoint_}"),
         "\n\n",
     ))
 

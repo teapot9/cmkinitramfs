@@ -626,8 +626,7 @@ class Item(ABC):
             )
         if parts[0] in ('file', 'dir', 'nod', 'slink', 'pipe', 'sock'):
             raise ValueError(f"Invalid format for {parts[0]}: {parts[1:]}")
-        else:
-            raise ValueError(f"Unknown type: {parts[0]}")
+        raise ValueError(f"Unknown type: {parts[0]}")
 
     @abstractmethod
     def build_to_cpio_list(self) -> str:
@@ -661,6 +660,7 @@ class File(Item):
     :param dests: Paths in the initramfs (hard-linked)
     :param src: Source file to copy (not unique to the file)
     :param data_hash: Hash of the file (can be obtained with :func:`hash_file`)
+    :param chunk_size: Chunk size to use when copying the file
     """
     mode: int
     user: int
@@ -668,6 +668,7 @@ class File(Item):
     dests: Set[str]
     src: str
     data_hash: bytes
+    chunk_size: int = 65536
 
     def __str__(self) -> str:
         return f"file from {self.src}"
@@ -699,14 +700,13 @@ class File(Item):
             + (' ' if len(self.dests) > 1 else '') \
             + ' '.join(dests)
 
-    def build_to_directory(self, base_dir: str,
-                           chunk_size: int = 65536) -> None:
+    def build_to_directory(self, base_dir: str) -> None:
         iter_dests = iter(self.dests)
         # Copy reference file
         base_dest = base_dir + next(iter_dests)
         with open(self.src, 'rb') as src_file, \
                 open(base_dest, 'wb') as dest_file:
-            for chunk in iter(lambda: src_file.read(chunk_size), b''):
+            for chunk in iter(lambda: src_file.read(self.chunk_size), b''):
                 dest_file.write(chunk)
         os.chmod(base_dest, self.mode)
         os.chown(base_dest, self.user, self.group)
@@ -1030,7 +1030,7 @@ class Initramfs:
         :raises ValueError: Invalid path
         """
 
-        path = os.path.normpath(path)
+        path = normpath(path)
         # Initramfs path must be absolute
         if not os.path.isabs(path):
             raise ValueError(f"{path} is not an absolute path")
@@ -1042,7 +1042,7 @@ class Initramfs:
             logger.debug("Stripping /usr/ from %s", path)
             path = path.removeprefix('/usr')
         # Check whitespaces
-        if ' ' in path or '\t' in path or '\n' in path:
+        if len(path.split()) != 1:
             logger.warning("Whitespaces are not supported by gen_init_cpio: "
                            "%s", path)
         return path

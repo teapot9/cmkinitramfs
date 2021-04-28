@@ -77,9 +77,9 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     """
 
     @overload
-    def find_data(data_str: None) -> None: pass
+    def find_data(data_str: None) -> None: ...
     @overload
-    def find_data(data_str: str) -> mkinit.Data: pass
+    def find_data(data_str: str) -> mkinit.Data: ...
 
     def find_data(data_str: Optional[str]) -> Optional[mkinit.Data]:
         """Find a Data object from a data string"""
