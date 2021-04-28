@@ -25,7 +25,6 @@ import hashlib
 import itertools
 import logging
 import os
-import shutil
 import socket
 import stat
 import subprocess
@@ -693,11 +692,15 @@ class File(Item):
             + (' ' if len(self.dests) > 1 else '') \
             + ' '.join(dests)
 
-    def build_to_directory(self, base_dir: str) -> None:
+    def build_to_directory(self, base_dir: str,
+                           chunk_size: int = 65536) -> None:
         iter_dests = iter(self.dests)
         # Copy reference file
         base_dest = base_dir + next(iter_dests)
-        shutil.copy(self.src, base_dest, follow_symlinks=True)
+        with open(self.src, 'rb') as src_file, \
+                open(base_dest, 'wb') as dest_file:
+            for chunk in iter(lambda: src_file.read(chunk_size), b''):
+                dest_file.write(chunk)
         os.chmod(base_dest, self.mode)
         os.chown(base_dest, self.user, self.group)
         # Hardlink other files
