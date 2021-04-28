@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 BINARY_KEYMAP_MAGIC = b'bkeymap'
 
 
-class ELFIncompatibleError(ELFFile):
+class ELFIncompatibleError(ELFError):
     """The ELF files are incompatible"""
 
 
