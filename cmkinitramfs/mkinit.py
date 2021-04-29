@@ -40,6 +40,9 @@ class Breakpoint(Enum):
     #: ``init``: Break after initramfs initialization.
     #: Can also be set with the ``RD_BREAK_INIT`` environment variable.
     INIT = auto()
+    #: ``module``: Break after loading kernel modules.
+    #: Can also be set with the ``RD_BREAK_MODULE`` environment variable.
+    MODULE = auto()
     #: ``rootfs``: Break after mounting the root filesystem.
     #: Can also be set with the ``RD_BREAK_ROOTFS`` environment variable.
     ROOTFS = auto()
@@ -260,6 +263,23 @@ def do_keymap(out: IO[str], keymap_file: str, unicode: bool = True) -> None:
     ))
 
 
+def do_module(out: IO[str], module: str, *args: str) -> None:
+    """Load a kernel module
+
+    :param out: Stream to write into
+    :param module: Name of the module to load
+    :param args: Arguments for the module (passed to ``modprobe``)
+    """
+    quoted_args = (f'{quote(arg)} ' for arg in args)
+
+    out.writelines((
+        f"echo 'Loading kernel module {module}'\n",
+        f"modprobe {quote(module)} ", *quoted_args, '|| ',
+        _die(f'Failed to load module {module}'),
+        '\n',
+    ))
+
+
 def do_break(out: IO[str], breakpoint_: Breakpoint) -> None:
     """Drop into a shell if rd.break is set
 
@@ -270,6 +290,8 @@ def do_break(out: IO[str], breakpoint_: Breakpoint) -> None:
         breakname = 'RD_BREAK_EARLY'
     elif breakpoint_ is Breakpoint.INIT:
         breakname = 'RD_BREAK_INIT'
+    elif breakpoint_ is Breakpoint.MODULE:
+        breakname = 'RD_BREAK_MODULE'
     elif breakpoint_ is Breakpoint.ROOTFS:
         breakname = 'RD_BREAK_ROOTFS'
     elif breakpoint_ is Breakpoint.MOUNT:
@@ -903,8 +925,14 @@ class CloneData(Data):
         return self.dest.path()
 
 
-def mkinit(out: IO[str], root: Data, mounts: Optional[Iterable[Data]] = None,
-           keymap: Optional[str] = None, init: Optional[str] = None) -> None:
+def mkinit(
+        out: IO[str],
+        root: Data,
+        mounts: Optional[Iterable[Data]] = None,
+        keymap: Optional[str] = None,
+        init: Optional[str] = None,
+        modules: Iterable[Tuple[str, Iterable[str]]] = (),
+        ) -> None:
     """Create the init script
 
     :param out: Stream to write into
@@ -912,6 +940,9 @@ def mkinit(out: IO[str], root: Data, mounts: Optional[Iterable[Data]] = None,
     :param mounts: :class:`Data` needed in addition of rootfs
     :param keymap: Path of the keymap to load, :data:`None` means no keymap
     :param init: Init script to use, defaults to ``/sbin/init``
+    :param modules: Kernel modules to be load in the initramfs:
+        ``(module, (arg, ...))``. ``module`` is the module name string,
+        and ``(arg, ...)``` is the iterable with the module parameters.
     """
     if mounts is None:
         mounts = set()
@@ -934,6 +965,9 @@ def mkinit(out: IO[str], root: Data, mounts: Optional[Iterable[Data]] = None,
         do_keymap(out, keymap,
                   unicode=(locale.getdefaultlocale()[1] == 'UTF-8'))
     do_break(out, Breakpoint.INIT)
+    for mod_name, mod_args in modules:
+        do_module(out, mod_name, *mod_args)
+    do_break(out, Breakpoint.MODULE)
     root.load(out)
     do_break(out, Breakpoint.ROOTFS)
     for mount in mounts:

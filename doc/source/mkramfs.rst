@@ -36,6 +36,10 @@ mkramfs
 
 .. autofunction:: findexec
 
+.. autofunction:: _get_all_kmods
+
+.. autofunction:: find_kmod
+
 .. autofunction:: busybox_get_applets
 
 .. autofunction:: mkcpio_from_dir
@@ -72,7 +76,7 @@ mkramfs
    :show-inheritance:
 
 .. autoclass:: Initramfs
-   :members: add_item, add_file, build_to_cpio_list, build_to_directory
+   :members: add_item, mkdir, add_file, build_to_cpio_list, build_to_directory
    :special-members: __iter__, __contains__
    :show-inheritance:
 

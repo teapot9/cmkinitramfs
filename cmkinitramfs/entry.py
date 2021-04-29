@@ -54,6 +54,9 @@ class Config:
     :param init_path: Path where the init script will be generated
     :param cmkcpiodir_opts: Default options for cmkcpiodir
     :param cmkcpiolist_opts: Default options for cmkcpiolist
+    :param modules: Kernel modules to be loaded in the initramfs:
+        ``(module, (arg, ...))``. ``module`` is the module name string,
+        and ``(arg, ...)``` is the tuple with the module parameters.
     """
     root: mkinit.Data
     mounts: FrozenSet[mkinit.Data]
@@ -65,6 +68,7 @@ class Config:
     init_path: str
     cmkcpiodir_opts: str
     cmkcpiolist_opts: str
+    modules: FrozenSet[Tuple[str, Tuple[str, ...]]]
 
 
 def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
@@ -184,6 +188,12 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
             src, *dest = line.split(':')
             libs.add((src, dest[0] if dest else None))
 
+    modules = set()
+    for module in config['DEFAULT'].get('modules', '').split('\n'):
+        if module:
+            mod_name, *mod_args = module.split()
+            modules.add((mod_name, tuple(mod_args)))
+
     # Create dictionnary to return
     ret_cfg = Config(
         root=root,
@@ -204,6 +214,7 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
         cmkcpiolist_opts=config['DEFAULT'].get(
             'cmkcpiolist-default-opts', ''
         ),
+        modules=frozenset(modules),
     )
 
     # Configure final data sources
@@ -220,9 +231,12 @@ def entry_cmkinit() -> None:
     parser.add_argument('--version', action='version', version=_VERSION_INFO)
     parser.parse_args()
     mkinit.mkinit(
-        out=sys.stdout, root=config.root, mounts=config.mounts,
+        out=sys.stdout,
+        root=config.root,
+        mounts=config.mounts,
         keymap=(None if config.keymap is None else config.keymap[2]),
-        init=config.init
+        init=config.init,
+        modules=config.modules,
     )
 
 
@@ -266,6 +280,11 @@ def _common_parser_cmkcpio() -> argparse.ArgumentParser:
     parser.add_argument(
         '--binroot', '-r', type=str, default='/',
         help="set the root directory for binaries (executables and libraries)"
+    )
+    parser.add_argument(
+        '--kernel', '-K', type=str, default=None,
+        help=("set the target kernel version of the initramfs, "
+              "defaults to the running kernel")
     )
     return parser
 
@@ -319,9 +338,12 @@ def entry_cmkcpiolist() -> None:
     # Init
     with open(config.init_path, 'w') as init_file:
         mkinit.mkinit(
-            out=init_file, root=config.root, mounts=config.mounts,
+            out=init_file,
+            root=config.root,
+            mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
-            init=config.init
+            init=config.init,
+            modules=config.modules,
         )
 
     # Initramfs
@@ -332,6 +354,7 @@ def entry_cmkcpiolist() -> None:
             user=(0 if not args.debug else os.getuid()),
             group=(0 if not args.debug else os.getgid()),
             binroot=args.binroot,
+            kernel=args.kernel,
         )
         mkramfs.mkinitramfs(
             initramfs=initramfs,
@@ -341,6 +364,7 @@ def entry_cmkcpiolist() -> None:
             libs=config.libs,
             keymap=(None if config.keymap is None
                     else config.keymap[1:3]),
+            modules=(k[0] for k in config.modules),
         )
 
         # CPIO list
@@ -426,9 +450,12 @@ def entry_cmkcpiodir() -> None:
     # Init
     with open(config.init_path, 'w') as init_file:
         mkinit.mkinit(
-            out=init_file, root=config.root, mounts=config.mounts,
+            out=init_file,
+            root=config.root,
+            mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
-            init=config.init
+            init=config.init,
+            modules=config.modules,
         )
 
     # Initramfs
@@ -439,6 +466,7 @@ def entry_cmkcpiodir() -> None:
             user=(0 if not args.debug else os.getuid()),
             group=(0 if not args.debug else os.getgid()),
             binroot=args.binroot,
+            kernel=args.kernel,
         )
         mkramfs.mkinitramfs(
             initramfs=initramfs,
@@ -448,6 +476,7 @@ def entry_cmkcpiodir() -> None:
             libs=config.libs,
             keymap=(None if config.keymap is None
                     else config.keymap[1:3]),
+            modules=(k[0] for k in config.modules),
         )
 
     if not args.only_build_archive:

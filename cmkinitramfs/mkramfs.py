@@ -41,6 +41,7 @@ from elftools.elf.enums import ENUM_DT_FLAGS_1
 
 logger = logging.getLogger(__name__)
 BINARY_KEYMAP_MAGIC = b'bkeymap'
+KMOD_DIR = '/lib/modules'
 
 
 class ELFIncompatibleError(ELFError):
@@ -464,6 +465,34 @@ def findexec(executable: str, compat: Optional[str] = None, root: str = '/') \
                          executable, found_dir, dest)
             return found_path, dest
     raise FileNotFoundError(executable)
+
+
+@functools.lru_cache()
+def _get_all_kmods(kernel: str) -> FrozenSet[str]:
+    """Get all kernel modules on the system
+
+    :param kernel: Target kernel version
+    :return: Set with the absolute path of the modules
+    """
+    return frozenset(glob.glob(f'{KMOD_DIR}/{kernel}/**/*.ko'))
+
+
+def find_kmod(module: str, kernel: str) -> str:
+    """Search a kernel module on the system
+
+    :param module: Name of the kernel module
+    :param kernel: Target kernel version
+    :return: Absolute path of the kernel module on the system
+    :raises FileNotFoundError: Kernel module not found
+    """
+    logger.debug("Searching module %s for kernel %s", module, kernel)
+    module_compat = module.replace('_', '-') + '.ko'
+    for kmod in _get_all_kmods(kernel):
+        if module_compat == os.path.basename(kmod).replace('_', '-'):
+            kmod = normpath(kmod)
+            logger.debug("Found module %s: %s", module, kmod)
+            return kmod
+    raise FileNotFoundError(f"Kernel module not found: {module}")
 
 
 def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
@@ -915,18 +944,22 @@ class Initramfs:
     :param group: Default group to use when creating items
     :param binroot: Root directory where binary files are found
         (executables and libraries)
+    :param kernel: Kernel version of the initramfs,
+        defaults to the running kernel version
     :param items: Items in the initramfs
     """
     user: int
     group: int
     binroot: str
+    kernel: str
     items: List[Item]
 
-    def __init__(self, user: int = 0, group: int = 0, binroot: str = '/') \
-            -> None:
+    def __init__(self, user: int = 0, group: int = 0, binroot: str = '/',
+                 kernel: Optional[str] = None) -> None:
         self.user = user
         self.group = group
         self.binroot = binroot
+        self.kernel = kernel if kernel is not None else platform.release()
         self.items = []
         self.__mklayout()
 
@@ -1047,6 +1080,23 @@ class Initramfs:
                            "%s", path)
         return path
 
+    def mkdir(self, path: str, mode: int = 0o755, parents: bool = False) \
+            -> None:
+        """Create a directory on the initramfs
+
+        :param path: Absolute path of the directory,
+            relative to the initramfs root
+        :param mode: File permissions to use
+        :param parents: If :data:`True`, missing parent directories will
+            also be created
+        :raises MergeError: Destination file exists and is different,
+            or missing parent directory (raised from :meth:`add_item`)
+        """
+        logger.debug("Creating directory %s", path)
+        if parents and os.path.dirname(path) not in self:
+            self.mkdir(os.path.dirname(path), mode=mode, parents=True)
+        self.add_item(Directory(mode, self.user, self.group, path))
+
     @functools.lru_cache()
     def add_file(self, src: str, dest: Optional[str] = None,
                  mode: Optional[int] = None) -> None:
@@ -1124,6 +1174,7 @@ def mkinitramfs(
         execs: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
         libs: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
         keymap: Optional[Tuple[str, str]] = None,
+        modules: Iterable[str] = (),
         ) -> None:
     """Add given files to the initramfs
 
@@ -1145,6 +1196,7 @@ def mkinitramfs(
         keymap to add to the initramfs, ``dest`` is the path of the keymap
         within the initramfs. If this argument is :data:`None`, no keymap
         will be added to the initramfs.
+    :param modules: Name of the kernel modules to include in the initramfs
     """
 
     if files is None:
@@ -1174,6 +1226,13 @@ def mkinitramfs(
         with open(keymap[0], 'rb') as bkeymap:
             if bkeymap.read(len(BINARY_KEYMAP_MAGIC)) != BINARY_KEYMAP_MAGIC:
                 logger.error("Binary keymap %s: bad file format", keymap[0])
+
+    # Add modules
+    for module in modules:
+        logger.info("Adding kernel module %s", module)
+        kmod = find_kmod(module, initramfs.kernel)
+        initramfs.mkdir(os.path.dirname(kmod), parents=True)
+        initramfs.add_file(kmod)
 
     # Add /init
     logger.info("Adding init script")

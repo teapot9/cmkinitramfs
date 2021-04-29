@@ -29,6 +29,8 @@ mkinit
 
 .. autofunction:: do_keymap
 
+.. autofunction:: do_module
+
 .. autofunction:: do_break
 
 .. autofunction:: do_switch_root

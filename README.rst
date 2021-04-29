@@ -164,6 +164,10 @@ global configuration.
  - ``cmkcpiolist-default-opts`` (optional): Options to append to the
    ``cmkcpiolist`` command line.
 
+ - ``modules`` (optional): Kernel modules to load in the initramfs.
+   One module per line, each line with the module name followed by the
+   module parameters (e.g. ``mymodule foo=bar``).
+
 LUKS data sections
 ------------------
 
@@ -294,7 +298,7 @@ cmkcpiodir
 
    $ cmkcpiodir --help
    usage: cmkcpiodir [-h] [--version] [--debug] [--verbose] [--quiet]
-                     [--output OUTPUT] [--binroot BINROOT]
+                     [--output OUTPUT] [--binroot BINROOT] [--kernel KERNEL]
                      [--only-build-archive | --only-build-directory] [--keep]
                      [--clean] [--build-dir BUILD_DIR]
 
@@ -311,6 +315,9 @@ cmkcpiodir
      --binroot BINROOT, -r BINROOT
                            set the root directory for binaries (executables and
                            libraries)
+     --kernel KERNEL, -K KERNEL
+                           set the target kernel version of the initramfs,
+                           defaults to the running kernel
      --only-build-archive, -c
                            only build the CPIO archive from an existing initramfs
                            directory
@@ -335,7 +342,7 @@ cmkcpiolist
 
    $ cmkcpiolist --help
    usage: cmkcpiolist [-h] [--version] [--debug] [--verbose] [--quiet]
-                      [--output OUTPUT] [--binroot BINROOT]
+                      [--output OUTPUT] [--binroot BINROOT] [--kernel KERNEL]
                       [--only-build-archive | --only-build-list] [--keep]
                       [--cpio-list CPIO_LIST]
 
@@ -352,6 +359,9 @@ cmkcpiolist
      --binroot BINROOT, -r BINROOT
                            set the root directory for binaries (executables and
                            libraries)
+     --kernel KERNEL, -K KERNEL
+                           set the target kernel version of the initramfs,
+                           defaults to the running kernel
      --only-build-archive, -c
                            only build the CPIO archive from an existing CPIO list
      --only-build-list, -L
