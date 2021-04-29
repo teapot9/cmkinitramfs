@@ -2,7 +2,25 @@
 cmkinitramfs
 ============
 
+.. image:: https://badge.fury.io/gh/teapot9%2Fcmkinitramfs.svg
+   :target: https://github.com/teapot9/cmkinitramfs
+   :alt: Github repository
+
+.. image:: https://badge.fury.io/py/cmkinitramfs.svg
+   :target: https://pypi.org/project/cmkinitramfs/
+   :alt: PyPI package
+
+.. image:: https://github.com/teapot9/cmkinitramfs/actions/workflows/qa.yml/badge.svg
+   :target: https://github.com/teapot9/cmkinitramfs/actions/workflows/qa.yml
+   :alt: Quality assurance
+
+.. image:: https://readthedocs.org/projects/cmkinitramfs/badge/?version=latest
+   :target: https://cmkinitramfs.readthedocs.io/en/latest/
+   :alt: Documentation status
+
 Tools to generate an initramfs from a configuration file.
+
+Documentation is available at https://cmkinitramfs.readthedocs.io/.
 
 About
 =====
@@ -63,7 +81,7 @@ Other dependencies:
 
  - mkcpiolist dependencies:
 
-   - ``gen_init_cpio`` (linux kernel)
+   - ``gen_init_cpio`` (linux kernel, linux-misc-apps)
 
 Install
 -------
