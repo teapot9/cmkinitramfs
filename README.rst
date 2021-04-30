@@ -156,7 +156,7 @@ global configuration.
    Defaults to ``/sbin/init``.
 
  - ``init-path`` (optional): Path where the init script will be generated
-   (generated from :func:`cmkinitramfs.mkinit.mkinit`).
+   (generated from :func:`cmkinitramfs.init.mkinit`).
    Defaults to ``/tmp/init.sh``.
 
  - ``files`` (optional): Additional files to include in the initramfs.

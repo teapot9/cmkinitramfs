@@ -7,7 +7,8 @@ Table of contents
    :maxdepth: 2
    :numbered:
 
-   mkinit
+   init
+   data
    initramfs
    item
    bin

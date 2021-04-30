@@ -1,39 +1,11 @@
-======
-mkinit
-======
+====
+data
+====
 
-.. automodule:: cmkinitramfs.mkinit
+.. automodule:: cmkinitramfs.data
    :platform: Linux
 
-.. autoclass:: Breakpoint
-   :members:
-   :show-inheritance:
-
-.. autofunction:: _fun_rescue_shell
-
-.. autofunction:: _fun_printk
-
-.. autofunction:: _fun_panic
-
-.. autofunction:: _fun_die
-
 .. autofunction:: _die
-
-.. autofunction:: mkinit
-
-.. autofunction:: do_header
-
-.. autofunction:: do_init
-
-.. autofunction:: do_cmdline
-
-.. autofunction:: do_keymap
-
-.. autofunction:: do_module
-
-.. autofunction:: do_break
-
-.. autofunction:: do_switch_root
 
 .. autoclass:: Data
    :members: initialize, iter_all_deps,

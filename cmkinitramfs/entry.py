@@ -15,9 +15,10 @@ from dataclasses import dataclass
 from typing import Dict, FrozenSet, Optional, Tuple, overload
 
 import cmkinitramfs
-import cmkinitramfs.mkinit as mkinit
+import cmkinitramfs.data as datamod
 import cmkinitramfs.initramfs as mkramfs
 from cmkinitramfs.bin import findlib
+from cmkinitramfs.init import mkinit
 
 logger = logging.getLogger(__name__)
 _VERSION_INFO = \
@@ -47,11 +48,11 @@ class Config:
     :param init: Init path to launch at the end of the init script
         (``switch_root``)
     :param files: User configured files,
-        see :attr:`cmkinitramfs.mkinit.Data.files`
+        see :attr:`cmkinitramfs.init.Data.files`
     :param execs: User configured executables,
-        see :attr:`cmkinitramfs.mkinit.Data.files`
+        see :attr:`cmkinitramfs.init.Data.files`
     :param libs: User configured libraries,
-        see :attr:`cmkinitramfs.mkinit.Data.files`
+        see :attr:`cmkinitramfs.init.Data.files`
     :param init_path: Path where the init script will be generated
     :param cmkcpiodir_opts: Default options for cmkcpiodir
     :param cmkcpiolist_opts: Default options for cmkcpiolist
@@ -59,8 +60,8 @@ class Config:
         ``(module, (arg, ...))``. ``module`` is the module name string,
         and ``(arg, ...)``` is the tuple with the module parameters.
     """
-    root: mkinit.Data
-    mounts: FrozenSet[mkinit.Data]
+    root: datamod.Data
+    mounts: FrozenSet[datamod.Data]
     keymap: Optional[Tuple[str, str, str]]
     init: str
     files: FrozenSet[Tuple[str, Optional[str]]]
@@ -84,19 +85,19 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     @overload
     def find_data(data_str: None) -> None: ...
     @overload
-    def find_data(data_str: str) -> mkinit.Data: ...
+    def find_data(data_str: str) -> datamod.Data: ...
 
-    def find_data(data_str: Optional[str]) -> Optional[mkinit.Data]:
+    def find_data(data_str: Optional[str]) -> Optional[datamod.Data]:
         """Find a Data object from a data string"""
         if data_str is None:
             return None
         if data_str[:5] == 'UUID=':
             if data_dic.get(data_str[5:]) is None:
-                data_dic[data_str[5:]] = mkinit.UuidData(data_str[5:])
+                data_dic[data_str[5:]] = datamod.UuidData(data_str[5:])
             return data_dic[data_str[5:]]
         if data_str[:5] == 'PATH=':
             if data_dic.get(data_str[5:]) is None:
-                data_dic[data_str[5:]] = mkinit.PathData(data_str[5:])
+                data_dic[data_str[5:]] = datamod.PathData(data_str[5:])
             return data_dic[data_str[5:]]
         if data_str[:5] == 'DATA=':
             return data_dic[data_str[5:]]
@@ -109,11 +110,11 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
     config.read(config_file)
 
     # Get all data sources in data_dic
-    data_dic: Dict[str, mkinit.Data] = {}
+    data_dic: Dict[str, datamod.Data] = {}
     for data_id in config.sections():
         data_config = config[data_id]
         if data_config['type'] == 'luks':
-            data_dic[data_id] = mkinit.LuksData(
+            data_dic[data_id] = datamod.LuksData(
                 find_data(data_config['source']),
                 data_config['name'],
                 find_data(data_config.get('key')),
@@ -121,19 +122,19 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
                 data_config.getboolean('discard', fallback=False),
             )
         elif data_config['type'] == 'lvm':
-            data_dic[data_id] = mkinit.LvmData(
+            data_dic[data_id] = datamod.LvmData(
                 data_config['vg-name'],
                 data_config['lv-name'],
             )
         elif data_config['type'] == 'mount':
-            data_dic[data_id] = mkinit.MountData(
+            data_dic[data_id] = datamod.MountData(
                 find_data(data_config['source']),
                 data_config['mountpoint'],
                 data_config['filesystem'],
                 data_config.get('options', 'ro'),
             )
         elif data_config['type'] == 'md':
-            data_dic[data_id] = mkinit.MdData(
+            data_dic[data_id] = datamod.MdData(
                 [find_data(k.strip())
                  for k in data_config['source'].strip().split('\n')],
                 data_config['name'],
@@ -231,7 +232,7 @@ def entry_cmkinit() -> None:
     parser = argparse.ArgumentParser(description="Build an init script")
     parser.add_argument('--version', action='version', version=_VERSION_INFO)
     parser.parse_args()
-    mkinit.mkinit(
+    mkinit(
         out=sys.stdout,
         root=config.root,
         mounts=config.mounts,
@@ -393,7 +394,7 @@ def entry_cmkcpiolist() -> None:
 
     # Init
     with open(config.init_path, 'w') as init_file:
-        mkinit.mkinit(
+        mkinit(
             out=init_file,
             root=config.root,
             mounts=config.mounts,
@@ -505,7 +506,7 @@ def entry_cmkcpiodir() -> None:
 
     # Init
     with open(config.init_path, 'w') as init_file:
-        mkinit.mkinit(
+        mkinit(
             out=init_file,
             root=config.root,
             mounts=config.mounts,
