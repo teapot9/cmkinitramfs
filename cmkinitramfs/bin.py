@@ -19,7 +19,7 @@ from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_DT_FLAGS_1
 
-from .utils import normpath
+from .utils import normpath, removeprefix
 
 
 logger = logging.getLogger(__name__)
@@ -259,7 +259,7 @@ def _find_elf_deps_iter(elf: ELFFile, origin: str, root: str = '/') \
             if os.path.isabs(dep) \
                     or found_dir in itertools.chain(rpaths, runpaths):
                 # Libdir in R*PATH: use the same path
-                dest = normpath('/' + found_path.removeprefix(root))
+                dest = normpath('/' + removeprefix(found_path, root))
             else:
                 # Libdir in ld_path or ld.so.conf: use default libdir
                 dest = normpath(_get_libdir(found_arch, root) + '/' + dep)
@@ -434,7 +434,7 @@ def findexec(executable: str, compat: Optional[str] = None, root: str = '/') \
                 continue
             except ELFError:
                 pass
-            dest = normpath('/' + found_path.removeprefix(root))
+            dest = normpath('/' + removeprefix(found_path, root))
             logger.debug("Found %s in %s (dest: %s)",
                          executable, found_dir, dest)
             return found_path, dest

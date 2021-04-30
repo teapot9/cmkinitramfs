@@ -21,7 +21,7 @@ from typing import IO, Iterable, Iterator, List, Optional, Tuple
 
 from .bin import find_elf_deps_set, find_kmod, findexec, findlib
 from .item import Directory, File, Item, MergeError, Node, Symlink
-from .utils import hash_file, normpath
+from .utils import hash_file, normpath, removeprefix
 
 logger = logging.getLogger(__name__)
 BINARY_KEYMAP_MAGIC = b'bkeymap'
@@ -312,10 +312,10 @@ class Initramfs:
         # Strip /usr directory, not needed in initramfs
         if path.startswith('/usr/local/'):
             logger.debug("Stripping /usr/local/ from %s", path)
-            path = path.removeprefix('/usr/local')
+            path = removeprefix(path, '/usr/local')
         elif path.startswith('/usr/'):
             logger.debug("Stripping /usr/ from %s", path)
-            path = path.removeprefix('/usr')
+            path = removeprefix(path, '/usr')
         # Check whitespaces
         if len(path.split()) != 1:
             logger.warning("Whitespaces are not supported by gen_init_cpio: "
