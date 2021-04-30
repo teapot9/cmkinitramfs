@@ -50,7 +50,7 @@ Dependencies
 
 Python dependencies:
 
- - mkramfs (mkcpiodir and mkcpiolist) dependencies:
+ - bin (mkcpiodir and mkcpiolist) dependencies:
 
    - ``pyelftools``
 
@@ -69,7 +69,7 @@ Python dependencies:
 
 Other dependencies:
 
- - mkramfs (mkcpiodir and mkcpiolist) dependencies:
+ - initramfs (mkcpiodir and mkcpiolist) dependencies:
 
    - ``loadkeys`` (kbd)
    - ``busybox``
@@ -351,7 +351,7 @@ Running ``cmkcpiodir`` will generate the initramfs to a directory, then
 it will create the CPIO archive from this directory.
 ``cmkcpiodir`` requires root privileges when run in non-debug mode,
 see the ``do_nodes`` options of
-:meth:`cmkinitramfs.mkramfs.Initramfs.build_to_directory`.
+:meth:`cmkinitramfs.initramfs.Initramfs.build_to_directory`.
 
 cmkcpiolist
 -----------

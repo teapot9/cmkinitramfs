@@ -8,8 +8,11 @@ Table of contents
    :numbered:
 
    mkinit
-   mkramfs
+   initramfs
+   item
+   bin
    entry
+   utils
 
 
 Indices and tables

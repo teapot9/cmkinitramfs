@@ -16,7 +16,7 @@ from typing import Dict, FrozenSet, Optional, Tuple, overload
 
 import cmkinitramfs
 import cmkinitramfs.mkinit as mkinit
-import cmkinitramfs.mkramfs as mkramfs
+import cmkinitramfs.initramfs as mkramfs
 
 logger = logging.getLogger(__name__)
 _VERSION_INFO = \
@@ -318,7 +318,7 @@ def entry_cmkcpiolist() -> None:
         help="set the location of the CPIO list"
     )
     args = parser.parse_args(
-            shlex.split(config.cmkcpiolist_opts, posix=True) + sys.argv[1:]
+        shlex.split(config.cmkcpiolist_opts, posix=True) + sys.argv[1:]
     )
 
     _set_logging_level(args.verbose, args.quiet)
@@ -430,7 +430,7 @@ def entry_cmkcpiodir() -> None:
         help="set the location of the initramfs directory"
     )
     args = parser.parse_args(
-            shlex.split(config.cmkcpiodir_opts, posix=True) + sys.argv[1:]
+        shlex.split(config.cmkcpiodir_opts, posix=True) + sys.argv[1:]
     )
 
     _set_logging_level(args.verbose, args.quiet)

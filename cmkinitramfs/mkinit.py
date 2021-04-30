@@ -932,7 +932,7 @@ def mkinit(
         keymap: Optional[str] = None,
         init: Optional[str] = None,
         modules: Iterable[Tuple[str, Iterable[str]]] = (),
-        ) -> None:
+        ) -> None:  # noqa: E123
     """Create the init script
 
     :param out: Stream to write into
