@@ -13,6 +13,8 @@ entry
 
 .. autofunction:: entry_cmkinit
 
+.. autofunction:: entry_findlib
+
 .. autofunction:: entry_cmkcpiolist
 
 .. autofunction:: entry_cmkcpiodir

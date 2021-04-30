@@ -17,6 +17,7 @@ from typing import Dict, FrozenSet, Optional, Tuple, overload
 import cmkinitramfs
 import cmkinitramfs.mkinit as mkinit
 import cmkinitramfs.initramfs as mkramfs
+from cmkinitramfs.bin import findlib
 
 logger = logging.getLogger(__name__)
 _VERSION_INFO = \
@@ -240,6 +241,25 @@ def entry_cmkinit() -> None:
     )
 
 
+def _common_parser_logging(verbose: bool = False, quiet: int = 0) \
+        -> argparse.ArgumentParser:
+    """Create the common parser for entry points with a logger
+
+    :param verbose: Default verbose value
+    :param quiet: Default quiet value
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        '--verbose', '-v', action='store_true', default=verbose,
+        help="be verbose",
+    )
+    parser.add_argument(
+        '--quiet', '-q', action='count', default=quiet,
+        help="be quiet (can be repeated)",
+    )
+    return parser
+
+
 def _set_logging_level(verbose: bool, quiet: int) -> None:
     """Set global logging level according to verbose and quiet"""
     if verbose:
@@ -255,23 +275,59 @@ def _set_logging_level(verbose: bool, quiet: int) -> None:
     logging.getLogger().setLevel(level)
 
 
+def entry_findlib() -> None:
+    """Entry point for the findlib utility"""
+
+    parser = argparse.ArgumentParser(
+        description="Find a library on the system",
+        parents=(_common_parser_logging(),),
+    )
+    parser.add_argument('--version', action='version', version=_VERSION_INFO)
+    parser.add_argument(
+        '--compatible', '-c', type=str, default=None,
+        help="set a binary the library must be compatible with",
+    )
+    parser.add_argument(
+        '--root', '-r', type=str, default='/',
+        help="set the root directory to search for the library",
+    )
+    parser.add_argument(
+        '--null', '-0', action='store_true', default=False,
+        help="paths will be delemited by null characters instead of newlines",
+    )
+    parser.add_argument(
+        'libs', metavar='LIB', type=str, nargs='+',
+        help="library to search",
+    )
+    args = parser.parse_args()
+    _set_logging_level(args.verbose, args.quiet + 1)
+
+    errors = False
+    for lib in args.libs:
+        logger.info("Searching library: %s", lib)
+        try:
+            found, _ = findlib(lib, compat=args.compatible, root=args.root)
+        except FileNotFoundError:
+            logger.error("%s: Library not found", lib)
+            errors = True
+            continue
+        if args.quiet < 3:
+            print(found, end=('\n' if not args.null else '\0'))
+    sys.exit(0 if not errors else 1)
+
+
 def _common_parser_cmkcpio() -> argparse.ArgumentParser:
     """Create the common parser for cmkcpio* entry points"""
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        parents=(_common_parser_logging(),),
+    )
     parser.add_argument(
         '--version', action='version', version=_VERSION_INFO
     )
     parser.add_argument(
         "--debug", "-d", action="store_true", default=False,
         help="debugging mode: non-root, implies -k"
-    )
-    parser.add_argument(
-        '--verbose', '-v', action='store_true', default=False,
-        help="be verbose",
-    )
-    parser.add_argument(
-        '--quiet', '-q', action='count', default=0,
-        help="be quiet (can be repeated)",
     )
     parser.add_argument(
         "--output", "-o", type=str, default='/usr/src/initramfs.cpio',

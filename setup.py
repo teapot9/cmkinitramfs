@@ -31,6 +31,7 @@ setuptools.setup(
             'cmkinit = cmkinitramfs.entry:entry_cmkinit',
             'cmkcpiodir = cmkinitramfs.entry:entry_cmkcpiodir',
             'cmkcpiolist = cmkinitramfs.entry:entry_cmkcpiolist',
+            'findlib = cmkinitramfs.entry:entry_findlib',
         ],
     },
 
