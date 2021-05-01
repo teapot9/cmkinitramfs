@@ -1,4 +1,4 @@
-"""Library providing the main Data class for init script management
+"""Module providing the Data class for init script data sources management
 
 The :class:`Data` class defines an abstract object containing data,
 it has multiple subclasses for multiple types of data.

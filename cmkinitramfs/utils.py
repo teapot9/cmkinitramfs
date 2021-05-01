@@ -1,4 +1,4 @@
-"""Library providing miscellaneous utilities used by cmkinitramfs"""
+"""Module providing miscellaneous utilities used by cmkinitramfs"""
 
 from __future__ import annotations
 

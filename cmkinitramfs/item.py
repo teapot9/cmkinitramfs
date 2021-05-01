@@ -1,4 +1,4 @@
-"""Library providing the Item class for files in the initramfs
+"""Module providing the Item class for files in the initramfs
 
 Each file type of the initramfs has an :class:`Item` subclass. Those classes
 provide methods used by :class:`Initramfs` generation methods.

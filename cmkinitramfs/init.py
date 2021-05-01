@@ -1,4 +1,4 @@
-"""Library providing functions to build an init script
+"""Module providing functions to build an init script
 
 The :func:`mkinit` function will generate a ``/init`` script.
 

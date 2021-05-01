@@ -51,6 +51,7 @@ setuptools.setup(
         "Topic :: System :: Boot",
         "Topic :: System :: Boot :: Init",
         "Topic :: Utilities",
+        "Typing :: Typed",
     ],
     keywords=['initramfs', 'initramfs-generator'],
     platforms=['Linux'],

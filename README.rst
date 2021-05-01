@@ -2,25 +2,38 @@
 cmkinitramfs
 ============
 
-.. image:: https://badge.fury.io/gh/teapot9%2Fcmkinitramfs.svg
-   :target: https://github.com/teapot9/cmkinitramfs
-   :alt: Github repository
-
-.. image:: https://badge.fury.io/py/cmkinitramfs.svg
-   :target: https://pypi.org/project/cmkinitramfs/
-   :alt: PyPI package
-
-.. image:: https://github.com/teapot9/cmkinitramfs/actions/workflows/qa.yml/badge.svg
-   :target: https://github.com/teapot9/cmkinitramfs/actions/workflows/qa.yml
-   :alt: Quality assurance
-
-.. image:: https://readthedocs.org/projects/cmkinitramfs/badge/?version=latest
-   :target: https://cmkinitramfs.readthedocs.io/en/latest/
-   :alt: Documentation status
+|github version badge|
+|pypi version badge|
+|qa badge|
+|doc badge|
+|py version badge|
+|py implementation badge|
 
 Tools to generate an initramfs from a configuration file.
 
 Documentation is available at https://cmkinitramfs.readthedocs.io/.
+
+.. |github version badge| image:: https://badge.fury.io/gh/teapot9%2Fcmkinitramfs.svg
+   :target: https://github.com/teapot9/cmkinitramfs
+   :alt: Github repository
+
+.. |pypi version badge| image:: https://badge.fury.io/py/cmkinitramfs.svg
+   :target: https://pypi.org/project/cmkinitramfs/
+   :alt: PyPI package
+
+.. |qa badge| image:: https://github.com/teapot9/cmkinitramfs/actions/workflows/qa.yml/badge.svg
+   :target: https://github.com/teapot9/cmkinitramfs/actions/workflows/qa.yml
+   :alt: Quality assurance
+
+.. |doc badge| image:: https://readthedocs.org/projects/cmkinitramfs/badge/?version=latest
+   :target: https://cmkinitramfs.readthedocs.io/en/latest/
+   :alt: Documentation status
+
+.. |py version badge| image:: https://img.shields.io/pypi/pyversions/cmkinitramfs.svg
+   :alt: Python version
+
+.. |py implementation badge| image:: https://img.shields.io/pypi/implementation/cmkinitramfs.svg
+   :alt: Python implementation
 
 About
 =====

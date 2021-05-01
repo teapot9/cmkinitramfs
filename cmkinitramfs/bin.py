@@ -1,4 +1,4 @@
-"""Library providing functions to manage binaries and executables
+"""Module providing functions to manage binaries and executables
 
 This library also provides utilities like :func:`findexec`.
 Multiple helper functions are also available (e.g. :func:`find_elf_deps_iter`

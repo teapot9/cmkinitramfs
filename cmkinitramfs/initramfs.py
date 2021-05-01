@@ -1,4 +1,4 @@
-"""Library providing the main functions and class to build an initramfs
+"""Module providing functions and classes to build an initramfs
 
 This library provides a class :class:`Initramfs` which handles the content
 of an initramfs. This class supports creating an initramfs tree inside

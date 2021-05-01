@@ -2,6 +2,6 @@ graft config
 graft doc
 prune doc/build
 include LICENSE.txt
-include README.md
+include README.rst
 include tox.ini
 
