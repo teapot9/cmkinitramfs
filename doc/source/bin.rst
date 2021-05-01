@@ -28,6 +28,8 @@ bin
 
 .. autofunction:: find_elf_deps_set
 
+.. autofunction:: findlib_iter
+
 .. autofunction:: findlib
 
 .. autofunction:: parse_path

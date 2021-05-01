@@ -321,23 +321,19 @@ def find_elf_deps_set(src: str, root: str = '/') -> FrozenSet[Tuple[str, str]]:
     return frozenset(find_elf_deps_iter(src, root))
 
 
-def findlib(lib: str, compat: Optional[str] = None,
-            root: str = '/') -> Tuple[str, str]:
-    """Search a library in the system
+def findlib_iter(lib: str, compat: Optional[str] = None, root: str = '/') \
+        -> Iterator[Tuple[str, str]]:
+    """Search a library in the system, with globbing
 
-    Uses ``ld.so.conf`` and ``LD_LIBRARY_PATH``.
+    Same as :func:`findlib` but uses :func:`glob.glob` to find matching
+    libraries.
 
-    Libraries will be installed in the default library directory in the
-    initramfs.
-
-    :param lib: Library to search (e.g. ``libgcc_s.so.1``)
+    :param lib: Glob pattern for the library to search (e.g. ``libgcc_s.*``)
     :param compat: Path to a binary that the library must be compatible with
         (checked with :func:`_is_elf_compatible`),
         defaults to ``{root}/bin/sh``
     :param root: Path to prepend to all paths found
-    :return: ``(lib_src, lib_dest)``, with ``lib_src`` the absolute path
-        of the library on the current system, and ``lib_dest`` the absolute
-        path of the library on the initramfs
+    :return: Iterator over ``(lib_src, lib_dest)``, see :func:`findlib`
     :raises FileNotFoundError: Library not found
     """
     if compat is None:
@@ -356,18 +352,44 @@ def findlib(lib: str, compat: Optional[str] = None,
             _get_default_libdirs(root)
         ) if not os.path.isabs(lib) else (root,)
 
+        found = False
         for found_dir in search_paths:
             found_path = found_dir + '/' + libname
 
-            try:
-                found_arch = _get_elf_arch(pyelf, found_path)
-            except (ELFError, OSError):
-                continue
-            dest = normpath(_get_libdir(found_arch, root) + '/' + libname)
-            logger.debug("Found %s in %s (dest: %s)", lib, found_dir, dest)
-            return found_path, dest
+            for found_path in glob.iglob(found_path):
+                try:
+                    found_arch = _get_elf_arch(pyelf, found_path)
+                except (ELFError, OSError):
+                    continue
+                found = True
+                dest = normpath(_get_libdir(found_arch, root) + '/' + libname)
+                logger.debug("Found %s in %s (dest: %s)", lib, found_dir, dest)
+                yield found_path, dest
 
-    raise FileNotFoundError(lib)
+    if not found:
+        raise FileNotFoundError(lib)
+
+
+def findlib(lib: str, compat: Optional[str] = None, root: str = '/') \
+        -> Tuple[str, str]:
+    """Search a library in the system, without globbing
+
+    Uses ``ld.so.conf`` and ``LD_LIBRARY_PATH``.
+
+    Libraries will be installed in the default library directory in the
+    initramfs.
+
+    :param lib: Library to search (e.g. ``libgcc_s.so.1``)
+    :param compat: Path to a binary that the library must be compatible with
+        (checked with :func:`_is_elf_compatible`),
+        defaults to ``{root}/bin/sh``
+    :param root: Path to prepend to all paths found
+    :return: ``(lib_src, lib_dest)``, with ``lib_src`` the absolute path
+        of the library on the current system, and ``lib_dest`` the absolute
+        path of the library on the initramfs
+    :raises FileNotFoundError: Library not found
+    """
+    return next(findlib_iter(glob.escape(lib), compat, root))
 
 
 def parse_path(path: Optional[str] = None, root: str = '/') \

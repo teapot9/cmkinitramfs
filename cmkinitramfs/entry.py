@@ -17,7 +17,7 @@ from typing import Dict, FrozenSet, Optional, Tuple, overload
 import cmkinitramfs
 import cmkinitramfs.data as datamod
 import cmkinitramfs.initramfs as mkramfs
-from cmkinitramfs.bin import findlib
+from cmkinitramfs.bin import findlib, findlib_iter
 from cmkinitramfs.init import mkinit
 
 logger = logging.getLogger(__name__)
@@ -297,6 +297,10 @@ def entry_findlib() -> None:
         help="paths will be delemited by null characters instead of newlines",
     )
     parser.add_argument(
+        '--glob', '-g', action='store_true', default=False,
+        help="library names are glob patterns",
+    )
+    parser.add_argument(
         'libs', metavar='LIB', type=str, nargs='+',
         help="library to search",
     )
@@ -306,14 +310,19 @@ def entry_findlib() -> None:
     errors = False
     for lib in args.libs:
         logger.info("Searching library: %s", lib)
+
         try:
-            found, _ = findlib(lib, compat=args.compatible, root=args.root)
+            lib_iter = \
+                (findlib(lib, compat=args.compatible, root=args.root),) \
+                if not args.glob \
+                else findlib_iter(lib, compat=args.compatible, root=args.root)
+            for found, _ in lib_iter:
+                if args.quiet < 3:
+                    print(found, end=('\n' if not args.null else '\0'))
         except FileNotFoundError:
             logger.error("%s: Library not found", lib)
             errors = True
             continue
-        if args.quiet < 3:
-            print(found, end=('\n' if not args.null else '\0'))
     sys.exit(0 if not errors else 1)
 
 

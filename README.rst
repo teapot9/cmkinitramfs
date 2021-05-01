@@ -392,6 +392,38 @@ Running ``cmkcpiolist`` will generate an initramfs CPIO list to a file,
 then it will create the CPIO archive from this list with ``gen_init_cpio``.
 ``cmkcpiolist`` does not requires root privileges.
 
+findlib
+-------
+
+.. code-block:: console
+
+   $ findlib --help
+   usage: findlib [-h] [--verbose] [--quiet] [--version]
+                  [--compatible COMPATIBLE] [--root ROOT] [--null] [--glob]
+                  LIB [LIB ...]
+
+   Find a library on the system
+
+   positional arguments:
+     LIB                   library to search
+
+   optional arguments:
+     -h, --help            show this help message and exit
+     --verbose, -v         be verbose
+     --quiet, -q           be quiet (can be repeated)
+     --version             show program's version number and exit
+     --compatible COMPATIBLE, -c COMPATIBLE
+                           set a binary the library must be compatible with
+     --root ROOT, -r ROOT  set the root directory to search for the library
+     --null, -0            paths will be delemited by null characters instead of
+                           newlines
+     --glob, -g            library names are glob patterns
+
+``findlib`` will search the absolute path of a library on the system.
+It will search in directories from ``/etc/ld.so.conf``, ``LD_LIBRARY_PATH``,
+and default library paths (see :func:`cmkinitramfs.bin.findlib` and
+:func:`cmkinitramfs.bin.findlib_iter`).
+
 
 Examples
 ========
@@ -428,6 +460,29 @@ Command-line interface
  - Builds CPIO archive from ``/tmp/initramfs.list``
    to ``/usr/src/initramfs.cpio`` (disable this step with
    ``--only-build-list``).
+
+.. code-block:: console
+
+   $ findlib 'libgcc_s.so.1'
+   /usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/libgcc_s.so.1
+
+..
+
+ - Searches the ``libgcc_s.so.1`` library on the system and prints it
+   to stdout.
+
+.. code-block:: console
+
+   $ findlib -g 'libgcc_s.*'
+   /usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/libgcc_s.so.1
+   /lib64/libgcc_s.so.1
+   /lib64/libgcc_s.so.1
+
+..
+
+ - Search any library matching ``libgcc_s.*`` on the system and prints them
+   to stdout.
+
 
 Configuration
 -------------
