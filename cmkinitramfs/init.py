@@ -175,6 +175,7 @@ def do_init(out: IO[str]) -> None:
         "mount -t devtmpfs none /dev || ",
         _die('Failed to mount /dev'),
         "echo 3 1>'/proc/sys/kernel/printk'\n",
+        "depmod || ", _die('Failed to generate modules.dep'),
         "\n",
     ))
 
@@ -326,7 +327,7 @@ def mkinit(
     :param mounts: :class:`Data` needed in addition of rootfs
     :param keymap: Path of the keymap to load, :data:`None` means no keymap
     :param init: Init script to use, defaults to ``/sbin/init``
-    :param modules: Kernel modules to be load in the initramfs:
+    :param modules: Kernel modules to be loaded in the initramfs:
         ``(module, (arg, ...))``. ``module`` is the module name string,
         and ``(arg, ...)``` is the iterable with the module parameters.
     """

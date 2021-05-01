@@ -40,5 +40,7 @@ bin
 
 .. autodata:: KMOD_DIR
 
+.. autofunction:: find_kmod_deps
+
 .. autofunction:: find_kmod
 

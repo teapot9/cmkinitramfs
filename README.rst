@@ -73,6 +73,7 @@ Other dependencies:
 
    - ``loadkeys`` (kbd)
    - ``busybox``
+   - ``modinfo`` (kmod, busybox)
 
  - mkcpiodir dependencies:
 

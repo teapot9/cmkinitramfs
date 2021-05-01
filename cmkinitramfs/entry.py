@@ -12,7 +12,7 @@ import shlex
 import shutil
 import sys
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, Optional, Tuple, overload
+from typing import Dict, FrozenSet, List, Optional, Tuple, overload
 
 import cmkinitramfs
 import cmkinitramfs.data as datamod
@@ -58,8 +58,7 @@ class Config:
     :param cmkcpiodir_opts: Default options for cmkcpiodir
     :param cmkcpiolist_opts: Default options for cmkcpiolist
     :param modules: Kernel modules to be loaded in the initramfs:
-        ``(module, (arg, ...))``. ``module`` is the module name string,
-        and ``(arg, ...)``` is the tuple with the module parameters.
+        ``(module, (arg, ...))``. See :func:`cmkinitramfs.init.mkinit`.
     """
     root: datamod.Data
     mounts: FrozenSet[datamod.Data]
@@ -71,7 +70,7 @@ class Config:
     init_path: str
     cmkcpiodir_opts: str
     cmkcpiolist_opts: str
-    modules: FrozenSet[Tuple[str, Tuple[str, ...]]]
+    modules: Tuple[Tuple[str, Tuple[str, ...]], ...]
 
 
 def read_config(config_file: Optional[str] = None) -> Config:
@@ -191,11 +190,13 @@ def read_config(config_file: Optional[str] = None) -> Config:
             src, *dest = line.split(':')
             libs.add((src, dest[0] if dest else None))
 
-    modules = set()
+    modules: Dict[str, List[str]] = {}
     for module in config['DEFAULT'].get('modules', '').split('\n'):
         if module:
             mod_name, *mod_args = module.split()
-            modules.add((mod_name, tuple(mod_args)))
+            if modules.get(mod_name) is None:
+                modules[mod_name] = []
+            modules[mod_name].extend(mod_args)
 
     # Create dictionnary to return
     ret_cfg = Config(
@@ -217,7 +218,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
         cmkcpiolist_opts=config['DEFAULT'].get(
             'cmkcpiolist-default-opts', ''
         ),
-        modules=frozenset(modules),
+        modules=tuple((name, tuple(args)) for name, args in modules.items()),
     )
 
     # Configure final data sources

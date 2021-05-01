@@ -13,6 +13,7 @@ import itertools
 import logging
 import os
 import platform
+import subprocess
 from typing import FrozenSet, Iterator, List, Optional, Tuple, Union
 
 from elftools.common.exceptions import ELFError
@@ -474,6 +475,21 @@ def _get_all_kmods(kernel: str) -> FrozenSet[str]:
     return frozenset(glob.glob(normpath(f'{KMOD_DIR}/{kernel}/**/*.ko')))
 
 
+@functools.lru_cache()
+def find_kmod_deps(path: str) -> FrozenSet[str]:
+    """Get kernel module dependencies
+
+    :param path: Path of the kernel module to parse
+    :return: Set with the dependencies' names
+    :raises subprocess.CalledProcessError: Error during ``modinfo``
+    """
+
+    cmd = ('modinfo', '-0', '-F', 'depends', path)
+    logger.debug("Subprocess: %s", cmd)
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, check=True)
+    return frozenset(k for k in proc.stdout.decode('UTF-8').split('\0') if k)
+
+
 def find_kmod(module: str, kernel: str) -> str:
     """Search a kernel module on the system
 
@@ -482,6 +498,7 @@ def find_kmod(module: str, kernel: str) -> str:
     :return: Absolute path of the kernel module on the system
     :raises FileNotFoundError: Kernel module not found
     """
+
     logger.debug("Searching module %s for kernel %s", module, kernel)
     module_compat = module.replace('_', '-') + '.ko'
     for kmod in _get_all_kmods(kernel):

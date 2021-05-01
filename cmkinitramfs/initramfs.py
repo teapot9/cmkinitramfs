@@ -19,7 +19,8 @@ import platform
 import subprocess
 from typing import IO, Iterable, Iterator, List, Optional, Tuple
 
-from .bin import find_elf_deps_set, find_kmod, findexec, findlib
+from .bin import (find_elf_deps_set, find_kmod, find_kmod_deps,
+                  findexec, findlib)
 from .item import Directory, File, Item, MergeError, Node, Symlink
 from .utils import hash_file, normpath, removeprefix
 
@@ -366,6 +367,11 @@ class Initramfs:
         # Copy dependencies
         for dep_src, dep_dest in find_elf_deps_set(src, self.binroot):
             self.add_file(dep_src, dep_dest)
+        if src.endswith('.ko'):
+            for dep in find_kmod_deps(src):
+                dep = find_kmod(dep, self.kernel)
+                self.mkdir(os.path.dirname(dep), parents=True)
+                self.add_file(dep)
 
         # Add file
         if mode is None:
