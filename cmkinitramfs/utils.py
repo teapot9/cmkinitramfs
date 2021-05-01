@@ -5,7 +5,6 @@ from __future__ import annotations
 import functools
 import hashlib
 import os
-
 from typing import no_type_check
 
 
@@ -21,7 +20,7 @@ def removeprefix(string: str, prefix: str) -> str:
     """
     if hasattr(str, 'removeprefix'):
         return string.removeprefix(prefix)
-    elif string.startswith(prefix):
+    if string.startswith(prefix):
         return string[len(prefix):]
     return string
 

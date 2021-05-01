@@ -100,9 +100,9 @@ def keymap_build(src: str, dest: IO[bytes], unicode: bool = True) -> None:
 def mkinitramfs(
         initramfs: Initramfs,
         init: str,
-        files: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
-        execs: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
-        libs: Optional[Iterable[Tuple[str, Optional[str]]]] = None,
+        files: Iterable[Tuple[str, Optional[str]]] = (),
+        execs: Iterable[Tuple[str, Optional[str]]] = (),
+        libs: Iterable[Tuple[str, Optional[str]]] = (),
         keymap: Optional[Tuple[str, str]] = None,
         modules: Iterable[str] = (),
         ) -> None:  # noqa: E123
@@ -128,13 +128,6 @@ def mkinitramfs(
         will be added to the initramfs.
     :param modules: Name of the kernel modules to include in the initramfs
     """
-
-    if files is None:
-        files = set()
-    if execs is None:
-        execs = set()
-    if libs is None:
-        libs = set()
 
     # Add necessary files
     for fsrc, fdest in files:
@@ -202,6 +195,7 @@ class Initramfs:
         self.group = group
         self.binroot = binroot
         self.kernel = kernel if kernel is not None else platform.release()
+        logger.debug("Target kernel: %s", self.kernel)
         self.items = []
         self.__mklayout()
 

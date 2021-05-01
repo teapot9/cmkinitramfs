@@ -23,6 +23,7 @@ from .utils import normpath, removeprefix
 
 
 logger = logging.getLogger(__name__)
+#: Kernel modules will be searched in ``{KMOD_DIR}/{KERNEL}/**/*.ko``
 KMOD_DIR = '/lib/modules'
 
 
@@ -470,7 +471,7 @@ def _get_all_kmods(kernel: str) -> FrozenSet[str]:
     :param kernel: Target kernel version
     :return: Set with the absolute path of the modules
     """
-    return frozenset(glob.glob(f'{KMOD_DIR}/{kernel}/**/*.ko'))
+    return frozenset(glob.glob(normpath(f'{KMOD_DIR}/{kernel}/**/*.ko')))
 
 
 def find_kmod(module: str, kernel: str) -> str:

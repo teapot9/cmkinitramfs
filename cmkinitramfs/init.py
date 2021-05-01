@@ -314,7 +314,7 @@ def do_switch_root(out: IO[str], init: str, newroot: Data) -> None:
 def mkinit(
         out: IO[str],
         root: Data,
-        mounts: Optional[Iterable[Data]] = None,
+        mounts: Iterable[Data] = (),
         keymap: Optional[str] = None,
         init: Optional[str] = None,
         modules: Iterable[Tuple[str, Iterable[str]]] = (),
@@ -330,8 +330,6 @@ def mkinit(
         ``(module, (arg, ...))``. ``module`` is the module name string,
         and ``(arg, ...)``` is the iterable with the module parameters.
     """
-    if mounts is None:
-        mounts = set()
     if init is None:
         init = '/sbin/init'
 

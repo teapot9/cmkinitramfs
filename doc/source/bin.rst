@@ -38,5 +38,7 @@ bin
 
 .. autofunction:: _get_all_kmods
 
+.. autodata:: KMOD_DIR
+
 .. autofunction:: find_kmod
 

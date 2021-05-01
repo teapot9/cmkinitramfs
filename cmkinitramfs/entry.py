@@ -25,15 +25,16 @@ _VERSION_INFO = \
     f"%(prog)s ({cmkinitramfs.__name__}) {cmkinitramfs.__version__}"
 
 
-def _find_config_file() -> Optional[str]:
+def _find_config_file() -> str:
     """Find a configuration file to use"""
-    if os.environ.get('CMKINITCFG'):
-        return os.environ['CMKINITCFG']
+    env_config = os.environ.get('CMKINITCFG')
+    if env_config is not None and os.path.isfile(env_config):
+        return env_config
     if os.path.isfile('./cmkinitramfs.ini'):
         return './cmkinitramfs.ini'
     if os.path.isfile('/etc/cmkinitramfs.ini'):
         return '/etc/cmkinitramfs.ini'
-    return None
+    raise FileNotFoundError("Configuration file not found")
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ class Config:
     modules: FrozenSet[Tuple[str, Tuple[str, ...]]]
 
 
-def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
+def read_config(config_file: Optional[str] = None) -> Config:
     """Read a configuration file and generate data structures from it
 
     :param config_file: Configuration file to use. Defaults to, in order:
@@ -104,9 +105,9 @@ def read_config(config_file: Optional[str] = _find_config_file()) -> Config:
         return data_dic[data_str]
 
     # Read config file
-    config = configparser.ConfigParser()
     if config_file is None:
-        raise FileNotFoundError(f"Configuration file {config_file} not found")
+        config_file = _find_config_file()
+    config = configparser.ConfigParser()
     config.read(config_file)
 
     # Get all data sources in data_dic
