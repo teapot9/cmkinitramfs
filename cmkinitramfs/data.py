@@ -450,7 +450,7 @@ class MountData(Data):
         out.writelines((
             'mount_fsck()\n',
             '{\n',
-            '\tfsck "$@"\n',
+            '\tFSTAB_FILE=/dev/null fsck "$@"\n',
             '\tfsck_ret=$?\n'
             '\t[ "${fsck_ret}" -eq 0 ] && return 0\n',
         ))
@@ -503,7 +503,6 @@ class MountData(Data):
 
     def load(self, out: IO[str]) -> None:
         fsck = (
-            "FSTAB_FILE=/dev/null ",
             f'mount_fsck -t {quote(self.filesystem)} {self.source.path()} || ',
             _die(f'Failed to check filesystem {self}'),
         ) if self.source.path() != 'none' else ()

@@ -208,6 +208,7 @@ def do_cmdline(out: IO[str]) -> None:
         "\t\tfor bpoint in ${cmdline#*=}; do\n",
         "\t\t\tcase \"${bpoint}\" in\n",
         "\t\t\tinit) RD_BREAK_INIT=true ;;\n",
+        "\t\t\tmodule) RD_BREAK_MODULE=true ;;\n",
         "\t\t\trootfs) RD_BREAK_ROOTFS=true ;;\n",
         "\t\t\tmount) RD_BREAK_MOUNT=true ;;\n",
         "\t\t\t*) printk \"ERROR: Unknown breakpoint ${bpoint}\" ;;\n",
