@@ -188,6 +188,8 @@ def do_cmdline(out: IO[str]) -> None:
 
     Parsed parameters:
 
+     - ``init=<path to init>``: Set the program to run as init process
+       after the initramfs.
      - ``rd.break={init|rootfs|mount}``: Stops the boot process,
        defaults to ``rootfs``. See :class:`Breakpoint`.
      - ``rd.debug``: Enable debugging mode (with ``set -x``).
@@ -201,6 +203,7 @@ def do_cmdline(out: IO[str]) -> None:
         "for cmdline in $(cat /proc/cmdline); do\n",
         "\tcase \"${cmdline}\" in\n",
         "\t--) break ;;\n",
+        "\tinit=*) INIT=\"${cmdline#*=}\" ;;\n"
         "\trd.break) RD_BREAK_ROOTFS=true ;;\n",
         "\trd.break=*)\n",
         "\t\tOLDIFS=\"${IFS}\"\n",
@@ -289,7 +292,8 @@ def do_break(out: IO[str], breakpoint_: Breakpoint) -> None:
     ))
 
 
-def do_switch_root(out: IO[str], init: str, newroot: Data) -> None:
+def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
+        -> None:
     """Cleanup and switch root
 
       - Set kernel log level back to boot-time default
@@ -297,18 +301,26 @@ def do_switch_root(out: IO[str], init: str, newroot: Data) -> None:
       - Switch root
 
     :param out: Stream to write into
-    :param init: Init process to execute from the new root
     :param newroot: Data to use as new root
+    :param init: Init process to execute from the new root
     """
     out.writelines((
-        f"printk 'Run {init} as init process'\n",
+        '[ -z "${INIT+x}" ] && INIT=', quote(init), '\n',
+        'printk "Run ${INIT} as init process"\n',
+        'if [ -n "${RD_DEBUG+x}" ]; then\n',
+        '\tprintk \'  with arguments:\'\n',
+        '\tfor arg in "$@"; do printk "    ${arg}"; done\n',
+        '\tprintk \'  with environment:\'\n',
+        '\tenv | while read -r var; do pritnk "    ${var}"; done\n',
+        'fi\n',
+
         "verb=\"$(awk '{ print $4 }' /proc/sys/kernel/printk)\"\n",
         'echo "${verb}" >/proc/sys/kernel/printk\n',
         "umount /dev || ", _die('Failed to unmount /dev'),
         "umount /proc || ", _die('Failed to unmount /proc'),
         "umount /sys || ", _die('Failed to unmount /sys'),
         "echo 'INITRAMFS: End'\n",
-        f"exec switch_root {newroot.path()} {quote(init)}\n",
+        'exec switch_root ', newroot.path(), ' "${INIT}" "$@"\n',
         "\n",
     ))
 
@@ -318,7 +330,6 @@ def mkinit(
         root: Data,
         mounts: Iterable[Data] = (),
         keymap: Optional[str] = None,
-        init: Optional[str] = None,
         modules: Iterable[Tuple[str, Iterable[str]]] = (),
         ) -> None:  # noqa: E123
     """Create the init script
@@ -327,13 +338,10 @@ def mkinit(
     :param root: :class:`Data` to use as rootfs
     :param mounts: :class:`Data` needed in addition of rootfs
     :param keymap: Path of the keymap to load, :data:`None` means no keymap
-    :param init: Init script to use, defaults to ``/sbin/init``
     :param modules: Kernel modules to be loaded in the initramfs:
         ``(module, (arg, ...))``. ``module`` is the module name string,
         and ``(arg, ...)``` is the iterable with the module parameters.
     """
-    if init is None:
-        init = '/sbin/init'
 
     datatypes = set()
     for data in itertools.chain((root,), mounts):
@@ -359,4 +367,4 @@ def mkinit(
     for mount in mounts:
         mount.load(out)
     do_break(out, Breakpoint.MOUNT)
-    do_switch_root(out, init, root)
+    do_switch_root(out, root)

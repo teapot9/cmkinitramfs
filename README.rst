@@ -165,10 +165,6 @@ global configuration.
  - ``keymap-dest`` (optional): Path of the keymap file within the initramfs.
    Defaults to ``/root/keymap.bmap``.
 
- - ``init`` (optional): Configure which init process to run at the end of
-   the init script.
-   Defaults to ``/sbin/init``.
-
  - ``init-path`` (optional): Path where the init script will be generated
    (generated from :func:`cmkinitramfs.init.mkinit`).
    Defaults to ``/tmp/init.sh``.

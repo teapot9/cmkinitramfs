@@ -46,8 +46,6 @@ class Config:
     :param keymap: Keymap information tuple ``(source, build, dest)``:
         ``source``: keymap to convert, ``build``: converted keymap,
         ``dest``: keymap path within the initramfs
-    :param init: Init path to launch at the end of the init script
-        (``switch_root``)
     :param files: User configured files,
         see :attr:`cmkinitramfs.init.Data.files`
     :param execs: User configured executables,
@@ -63,7 +61,6 @@ class Config:
     root: datamod.Data
     mounts: FrozenSet[datamod.Data]
     keymap: Optional[Tuple[str, str, str]]
-    init: str
     files: FrozenSet[Tuple[str, Optional[str]]]
     execs: FrozenSet[Tuple[str, Optional[str]]]
     libs: FrozenSet[Tuple[str, Optional[str]]]
@@ -207,7 +204,6 @@ def read_config(config_file: Optional[str] = None) -> Config:
             config['DEFAULT'].get('keymap-path', '/tmp/keymap.bmap'),
             config['DEFAULT'].get('keymap-dest', '/root/keymap.bmap'),
         ) if config['DEFAULT'].getboolean('keymap', fallback=False) else None,
-        init=config['DEFAULT'].get('init', '/sbin/init'),
         files=frozenset(files),
         execs=frozenset(execs),
         libs=frozenset(libs),
@@ -239,7 +235,6 @@ def entry_cmkinit() -> None:
         root=config.root,
         mounts=config.mounts,
         keymap=(None if config.keymap is None else config.keymap[2]),
-        init=config.init,
         modules=config.modules,
     )
 
@@ -410,7 +405,6 @@ def entry_cmkcpiolist() -> None:
             root=config.root,
             mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
-            init=config.init,
             modules=config.modules,
         )
 
@@ -522,7 +516,6 @@ def entry_cmkcpiodir() -> None:
             root=config.root,
             mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
-            init=config.init,
             modules=config.modules,
         )
 
