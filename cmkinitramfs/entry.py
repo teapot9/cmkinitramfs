@@ -8,6 +8,7 @@ import itertools
 import locale
 import logging
 import os
+import os.path
 import shlex
 import shutil
 import sys
@@ -98,6 +99,8 @@ def read_config(config_file: Optional[str] = None) -> Config:
             return data_dic[data_str[5:]]
         if data_str[:5] == 'DATA=':
             return data_dic[data_str[5:]]
+        if data_dic.get(data_str) is None and os.path.isabs(data_str):
+            data_dic[data_str] = datamod.PathData(data_str)
         return data_dic[data_str]
 
     # Read config file

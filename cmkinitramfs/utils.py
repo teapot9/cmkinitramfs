@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
-import os
+import os.path
 from typing import no_type_check
 
 
