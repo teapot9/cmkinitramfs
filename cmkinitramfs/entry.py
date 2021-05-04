@@ -38,7 +38,7 @@ def _find_config_file() -> str:
     raise FileNotFoundError("Configuration file not found")
 
 
-@dataclass(frozen=True)
+@dataclass
 class Config:
     """Configuration informations
 
@@ -60,7 +60,7 @@ class Config:
         ``(module, (arg, ...))``. See :func:`cmkinitramfs.init.mkinit`.
     """
     root: datamod.Data
-    mounts: FrozenSet[datamod.Data]
+    mounts: Tuple[datamod.Data, ...]
     keymap: Optional[Tuple[str, str, str]]
     files: FrozenSet[Tuple[str, Optional[str]]]
     execs: FrozenSet[Tuple[str, Optional[str]]]
@@ -156,14 +156,14 @@ def read_config(config_file: Optional[str] = None) -> Config:
 
     # Define Data for root and for other mounts
     root = find_data(config['DEFAULT']['root'])
-    mounts = set(
+    mounts = tuple(
         find_data(k.strip())
         for k in config['DEFAULT']['mountpoints'].strip().split(',')
     )
 
     # Define needed files, execs and libs
     files = set()
-    for data in itertools.chain({root}, mounts):
+    for data in itertools.chain((root,), mounts):
         files |= data.files
         for ddep in data.iter_all_deps():
             files |= ddep.files
@@ -172,7 +172,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
             src, *dest = line.split(':')
             files.add((src, dest[0] if dest else None))
     execs = set()
-    for data in itertools.chain({root}, mounts):
+    for data in itertools.chain((root,), mounts):
         execs |= data.execs
         for ddep in data.iter_all_deps():
             execs |= ddep.execs
@@ -181,7 +181,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
             src, *dest = line.split(':')
             execs.add((src, dest[0] if dest else None))
     libs = set()
-    for data in itertools.chain({root}, mounts):
+    for data in itertools.chain((root,), mounts):
         libs |= data.libs
         for ddep in data.iter_all_deps():
             libs |= ddep.libs
@@ -201,7 +201,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
     # Create dictionnary to return
     ret_cfg = Config(
         root=root,
-        mounts=frozenset(mounts),
+        mounts=mounts,
         keymap=(
             config['DEFAULT'].get('keymap-src'),
             config['DEFAULT'].get('keymap-path', '/tmp/keymap.bmap'),
@@ -221,7 +221,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
     )
 
     # Configure final data sources
-    for data in ret_cfg.mounts | {ret_cfg.root}:
+    for data in itertools.chain(ret_cfg.mounts, (ret_cfg.root,)):
         data.set_final()
 
     return ret_cfg

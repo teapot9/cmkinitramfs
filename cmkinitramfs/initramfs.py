@@ -12,7 +12,6 @@ The main function is :func:`mkinitramfs` to build the complete initramfs.
 
 from __future__ import annotations
 
-import functools
 import logging
 import os
 import os.path
@@ -250,6 +249,11 @@ class Initramfs:
                 return True
         return False
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and self.user == other.user \
+            and self.group == other.group and self.binroot == other.binroot \
+            and self.kernel == other.kernel and self.items == other.items
+
     def add_item(self, new_item: Item) -> None:
         """Add an item to the initramfs
 
@@ -335,7 +339,6 @@ class Initramfs:
             self.mkdir(os.path.dirname(path), mode=mode, parents=True)
         self.add_item(Directory(mode, self.user, self.group, path))
 
-    @functools.lru_cache()
     def add_file(self, src: str, dest: Optional[str] = None,
                  mode: Optional[int] = None) -> None:
         """Add a file to the initramfs

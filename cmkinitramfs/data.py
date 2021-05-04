@@ -14,7 +14,7 @@ from __future__ import annotations
 import itertools
 import os.path
 from shlex import quote
-from typing import FrozenSet, Iterable, Iterator, IO, Optional, Set, Tuple
+from typing import Iterable, Iterator, IO, List, Optional, Set, Tuple
 
 
 def _die(message: str, newline: bool = True) -> str:
@@ -59,9 +59,9 @@ class Data:
     files: Set[Tuple[str, Optional[str]]]
     execs: Set[Tuple[str, Optional[str]]]
     libs: Set[Tuple[str, Optional[str]]]
-    _need: Set[Data]
-    _lneed: Set[Data]
-    _needed_by: Set[Data]
+    _need: List[Data]
+    _lneed: List[Data]
+    _needed_by: List[Data]
     _is_final: bool
     _is_loaded: bool
 
@@ -85,11 +85,17 @@ class Data:
         self.files = set()
         self.execs = set()
         self.libs = set()
-        self._need = set()
-        self._lneed = set()
-        self._needed_by = set()
+        self._need = []
+        self._lneed = []
+        self._needed_by = []
         self._is_final = False
         self._is_loaded = False
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and self.files == other.files \
+            and self.execs == other.execs and self.libs == other.libs \
+            and self._need == other._need and self._lneed == other._lneed \
+            and self._is_final == other._is_final
 
     def iter_all_deps(self) -> Iterator[Data]:
         """Recursivelly get dependencies
@@ -117,13 +123,19 @@ class Data:
 
     def add_dep(self, dep: Data) -> None:
         """Add a :class:`Data` object to the hard dependencies"""
-        self._need.add(dep)
-        dep._needed_by.add(self)
+        if dep in self._lneed:
+            self._lneed.remove(dep)
+        if dep not in self._need:
+            self._need.append(dep)
+        if self not in dep._needed_by:
+            dep._needed_by.append(self)
 
     def add_load_dep(self, dep: Data) -> None:
         """Add a :class:`Data` object to the loading dependencies"""
-        self._lneed.add(dep)
-        dep._needed_by.add(self)
+        if dep not in self._lneed and dep not in self._need:
+            self._lneed.append(dep)
+        if self not in dep._needed_by:
+            dep._needed_by.append(self)
 
     def _pre_load(self, out: IO[str]) -> None:
         """This function does preparation for loading the Data
@@ -141,7 +153,7 @@ class Data:
             raise DataError(f"{self} is already loaded")
         self._is_loaded = True
         # Load dependencies
-        for k in self._need | self._lneed:
+        for k in self._need + self._lneed:
             if not k._is_loaded:
                 k.load(out)
 
@@ -272,6 +284,10 @@ class PathData(Data):
     def __str__(self) -> str:
         return self.datapath
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.datapath == other.datapath
+
     def path(self) -> str:
         return quote(self.datapath)
 
@@ -292,6 +308,10 @@ class UuidData(Data):
 
     def __str__(self) -> str:
         return "UUID=" + self.uuid
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.uuid == other.uuid
 
     def path(self) -> str:
         return '"$(findfs ' + quote('UUID=' + self.uuid) + ')"'
@@ -326,6 +346,12 @@ class LuksData(Data):
 
     def __str__(self) -> str:
         return self.name
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.source == other.source and self.name == other.name \
+            and self.key == other.key and self.header == other.header \
+            and self.discard == other.discard
 
     def load(self, out: IO[str]) -> None:
         header = f'--header {self.header.path()} ' if self.header else ''
@@ -372,6 +398,10 @@ class LvmData(Data):
 
     def __str__(self) -> str:
         return self.vg_name + "/" + self.lv_name
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.vg_name == other.vg_name and self.lv_name == other.lv_name
 
     def load(self, out: IO[str]) -> None:
         self._pre_load(out)
@@ -501,6 +531,13 @@ class MountData(Data):
     def __str__(self) -> str:
         return self.mountpoint
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.source == other.source \
+            and self.mountpoint == other.mountpoint \
+            and self.filesystem == other.filesystem \
+            and self.options == other.options
+
     def load(self, out: IO[str]) -> None:
         fsck = (
             f'mount_fsck -t {quote(self.filesystem)} {self.source.path()} || ',
@@ -546,19 +583,23 @@ class MdData(Data):
     :param name: Name for the MD device
     :raises ValueError: No :class:`Data` source
     """
-    sources: FrozenSet[Data]
+    sources: Tuple[Data, ...]
     name: str
 
     def __init__(self, sources: Iterable[Data], name: str):
         super().__init__()
         self.execs.add(('mdadm', None))
-        self.sources = frozenset(sources)
+        self.sources = tuple(sources)
         self.name = name
         if not self.sources:
             raise ValueError(f"{self} has no source defined")
 
     def __str__(self) -> str:
         return self.name
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.sources == other.sources and self.name == other.name
 
     def load(self, out: IO[str]) -> None:
         # Get the string containing all sources to use
@@ -610,6 +651,10 @@ class CloneData(Data):
 
     def __str__(self) -> str:
         return f"{self.source} to {self.dest}"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.source == other.source and self.dest == other.dest
 
     def load(self, out: IO[str]) -> None:
         self._pre_load(out)
