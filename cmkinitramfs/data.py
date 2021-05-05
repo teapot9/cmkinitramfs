@@ -50,6 +50,14 @@ class Data:
         Same format as :attr:`files`.
     :param libs: Libraries directly needed in the initramfs.
         Same format as :attr:`files`.
+    :param busybox: Busybox compatible commands needed in the initramfs.
+        Any commands that are compatible with Busybox's implementation
+        should be added.
+        Exception: special shell built-in commands and reserved words
+        are guaranteed to be available and *can* be ommitted
+        (a list is defined
+        in :data:`cmkinitramfs.initramfs.SHELL_SPECIAL_BUILTIN`
+        and :data:`cmkinitramfs.initramfs.SHELL_RESERVED_WORDS`).
     :param _need: Loading and runtime dependencies
     :param _lneed: Loading only dependencies
     :param _needed_by: Reverse dependencies
@@ -59,6 +67,7 @@ class Data:
     files: Set[Tuple[str, Optional[str]]]
     execs: Set[Tuple[str, Optional[str]]]
     libs: Set[Tuple[str, Optional[str]]]
+    busybox: Set[str]
     _need: List[Data]
     _lneed: List[Data]
     _needed_by: List[Data]
@@ -85,6 +94,7 @@ class Data:
         self.files = set()
         self.execs = set()
         self.libs = set()
+        self.busybox = set()
         self._need = []
         self._lneed = []
         self._needed_by = []
@@ -304,6 +314,7 @@ class UuidData(Data):
 
     def __init__(self, uuid: str):
         super().__init__()
+        self.busybox |= {'findfs'}
         self.uuid = uuid
 
     def __str__(self) -> str:
@@ -338,6 +349,7 @@ class LuksData(Data):
         super().__init__()
         self.execs.add(('cryptsetup', None))
         self.libs.add(('libgcc_s.so.1', None))
+        self.busybox |= {'echo'}
         self.source = source
         self.name = name
         self.key = key
@@ -393,6 +405,7 @@ class LvmData(Data):
     def __init__(self, vg_name: str, lv_name: str):
         super().__init__()
         self.execs.add(('lvm', None))
+        self.busybox |= {'echo'}
         self.vg_name = vg_name
         self.lv_name = lv_name
 
@@ -507,6 +520,8 @@ class MountData(Data):
     def __init__(self, source: Data, mountpoint: str, filesystem: str,
                  options: str = "ro"):
         super().__init__()
+        self.busybox |= {'fsck', '[', 'reboot', 'echo', 'mkdir', 'mount',
+                         'umount'}
         self.source = source if source else PathData("none")
         self.mountpoint = mountpoint
         self.filesystem = filesystem
@@ -589,6 +604,7 @@ class MdData(Data):
     def __init__(self, sources: Iterable[Data], name: str):
         super().__init__()
         self.execs.add(('mdadm', None))
+        self.busybox |= {'echo'}
         self.sources = tuple(sources)
         self.name = name
         if not self.sources:
@@ -646,6 +662,7 @@ class CloneData(Data):
 
     def __init__(self, source: Data, dest: Data):
         super().__init__()
+        self.busybox |= {'echo', 'cp'}
         self.source = source
         self.dest = dest
 

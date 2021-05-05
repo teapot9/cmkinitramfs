@@ -17,7 +17,7 @@ import os
 import os.path
 import platform
 import subprocess
-from typing import IO, Iterator, List, Optional, Tuple
+from typing import IO, Iterable, Iterator, List, Optional, Tuple
 
 from .bin import (find_elf_deps_set, find_kmod, find_kmod_deps,
                   findexec, findlib)
@@ -25,6 +25,18 @@ from .item import Directory, File, Item, MergeError, Node, Symlink
 from .utils import hash_file, normpath, removeprefix
 
 logger = logging.getLogger(__name__)
+#: Set of shell special built-in commands.
+#: They are guaranteed to be available in the initramfs' ``/bin/sh``.
+SHELL_SPECIAL_BUILTIN = frozenset((
+    'break', ':', 'continue', '.', 'eval', 'exec', 'exit', 'export',
+    'readonly', 'return', 'set', 'shift', 'times', 'trap', 'unset',
+))
+#: Set of shell reserved words.
+#: They are guaranteed to be available in the initramfs' ``/bin/sh``.
+SHELL_RESERVED_WORDS = frozenset((
+    '!', '{', '}', 'case', 'do', 'done', 'elif', 'else', 'esac', 'fi', 'for',
+    'if', 'in', 'then', 'until', 'while',
+))
 
 
 def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
@@ -348,13 +360,19 @@ class Initramfs:
         self.mkdir(os.path.dirname(kmod), parents=True)
         self.add_file(kmod, mode=mode)
 
-    def add_busybox(self, sys_busybox: Optional[str] = None) -> None:
+    def add_busybox(self, needed: Iterable[str] = (),
+                    sys_busybox: Optional[str] = None) -> None:
         """Add busybox and its applets to the initramfs
 
         Applets will be ignored if a file with the same path
         already exists. To avoid collision, this method should be called
         after all needed files have been added.
 
+        If any command listed in ``needed`` is not available in busybox
+        (either as an applet, a shell special built-in, or a reserved word),
+        the default system one will be included (from ``PATH``).
+
+        :param needed: Needed Busybox compatible shell commands
         :param sys_busybox: Busybox executable to use to get the list of
             applets, defaults to the one in ``PATH``
         :raises FileNotFoundError: Busybox executable or ELF dependency
@@ -363,13 +381,22 @@ class Initramfs:
             or missing parent directory (raised from :meth:`add_item`,
             not raised for applets)
         """
+        if sys_busybox is None:
+            sys_busybox = findexec('busybox')[0]
+        applets = set() | SHELL_SPECIAL_BUILTIN | SHELL_RESERVED_WORDS
+
         busybox_src, busybox_dest = findexec('busybox', root=self.binroot)
         self.add_file(busybox_src, busybox_dest)
-        for applet in busybox_get_applets(findexec('busybox')[0]):
+        for applet in busybox_get_applets(sys_busybox):
+            applets.add(os.path.basename(applet))
             try:
                 self.add_file(busybox_src, applet)
             except MergeError:
                 logger.debug("Not adding applet %s: file exists", applet)
+        for dep in needed:
+            if dep not in applets:
+                logger.debug("Adding missing applet: %s", dep)
+                self.add_executable(dep)
 
     def build_to_cpio_list(self, dest: IO[str]) -> None:
         """Write a CPIO list into a file
