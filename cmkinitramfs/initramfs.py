@@ -329,7 +329,8 @@ class Initramfs:
             or missing parent directory (raised from :meth:`add_item`)
         """
         lib_src, lib_dest = findlib(src, root=self.binroot)
-        self.add_file(lib_src, dest if dest is not None else lib_dest)
+        self.add_file(lib_src, dest if dest is not None else lib_dest,
+                      mode=mode)
 
     def add_executable(self, src: str, dest: Optional[str] = None,
                        mode: Optional[int] = None) -> None:
@@ -346,7 +347,8 @@ class Initramfs:
             or missing parent directory (raised from :meth:`add_item`)
         """
         exec_src, exec_dest = findexec(src, root=self.binroot)
-        self.add_file(exec_src, dest if dest is not None else exec_dest)
+        self.add_file(exec_src, dest if dest is not None else exec_dest,
+                      mode=mode)
 
     def add_kmod(self, module: str, mode: Optional[int] = None) -> None:
         """Add a kernel module to the initramfs
