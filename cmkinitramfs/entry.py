@@ -24,6 +24,7 @@ from cmkinitramfs.init import mkinit
 logger = logging.getLogger(__name__)
 _VERSION_INFO = \
     f"%(prog)s ({cmkinitramfs.__name__}) {cmkinitramfs.__version__}"
+BINARY_KEYMAP_MAGIC = b'bkeymap'
 
 
 def _find_config_file() -> str:
@@ -355,6 +356,43 @@ def _common_parser_cmkcpio() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
+    """Add files to the initramfs from the configuration"""
+
+    # Add necessary files
+    for src, dest in config.files:
+        logger.info("Adding file %s", src)
+        initramfs.add_file(src, dest)
+    for src, dest in config.libs:
+        logger.info("Adding library %s", src)
+        initramfs.add_library(src, dest)
+    for src, dest in config.execs:
+        logger.info("Adding executable %s", src)
+        initramfs.add_executable(src, dest)
+
+    # Add keymap
+    if config.keymap is not None:
+        logger.info("Adding keymap as %s", config.keymap[2])
+        with open(config.keymap[1], 'rb') as bkeymap:
+            if bkeymap.read(len(BINARY_KEYMAP_MAGIC)) != BINARY_KEYMAP_MAGIC:
+                logger.error("Binary keymap %s: bad file format",
+                             config.keymap[1])
+        initramfs.add_file(*config.keymap[1:3], mode=0o644)
+
+    # Add module
+    for module, _ in config.modules:
+        logger.info("Adding kernel module %s", module)
+        initramfs.add_kmod(module)
+
+    # Add /init
+    logger.info("Adding init script")
+    initramfs.add_file(config.init_path, '/init', mode=0o755)
+
+    # Add busybox
+    logger.info("Adding busybox")
+    initramfs.add_busybox()
+
+
 def entry_cmkcpiolist() -> None:
     """Entry point for cmkcpiolist"""
 
@@ -421,16 +459,7 @@ def entry_cmkcpiolist() -> None:
             binroot=args.binroot,
             kernel=args.kernel,
         )
-        mkramfs.mkinitramfs(
-            initramfs=initramfs,
-            init=config.init_path,
-            files=config.files,
-            execs=config.execs,
-            libs=config.libs,
-            keymap=(None if config.keymap is None
-                    else config.keymap[1:3]),
-            modules=(k[0] for k in config.modules),
-        )
+        _build_initramfs(initramfs, config)
 
         # CPIO list
         logger.info("Generating CPIO list")
@@ -532,16 +561,7 @@ def entry_cmkcpiodir() -> None:
             binroot=args.binroot,
             kernel=args.kernel,
         )
-        mkramfs.mkinitramfs(
-            initramfs=initramfs,
-            init=config.init_path,
-            files=config.files,
-            execs=config.execs,
-            libs=config.libs,
-            keymap=(None if config.keymap is None
-                    else config.keymap[1:3]),
-            modules=(k[0] for k in config.modules),
-        )
+        _build_initramfs(initramfs, config)
 
     if not args.only_build_archive:
         # Pre-build cleanup

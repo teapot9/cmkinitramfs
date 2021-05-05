@@ -17,7 +17,7 @@ import os
 import os.path
 import platform
 import subprocess
-from typing import IO, Iterable, Iterator, List, Optional, Tuple
+from typing import IO, Iterator, List, Optional, Tuple
 
 from .bin import (find_elf_deps_set, find_kmod, find_kmod_deps,
                   findexec, findlib)
@@ -25,7 +25,6 @@ from .item import Directory, File, Item, MergeError, Node, Symlink
 from .utils import hash_file, normpath, removeprefix
 
 logger = logging.getLogger(__name__)
-BINARY_KEYMAP_MAGIC = b'bkeymap'
 
 
 def busybox_get_applets(busybox_exec: str) -> Iterator[str]:
@@ -96,81 +95,6 @@ def keymap_build(src: str, dest: IO[bytes], unicode: bool = True) -> None:
     cmd = ('loadkeys', '--unicode' if unicode else '--ascii', '--bkeymap', src)
     logger.debug("Subprocess: %s", cmd)
     subprocess.check_call(cmd, stdout=dest)
-
-
-def mkinitramfs(
-        initramfs: Initramfs,
-        init: str,
-        files: Iterable[Tuple[str, Optional[str]]] = (),
-        execs: Iterable[Tuple[str, Optional[str]]] = (),
-        libs: Iterable[Tuple[str, Optional[str]]] = (),
-        keymap: Optional[Tuple[str, str]] = None,
-        modules: Iterable[str] = (),
-        ) -> None:  # noqa: E123
-    """Add given files to the initramfs
-
-    :param initramfs: :class:`Initramfs` instance to which the files will be
-        added.
-    :param init: Path of the init script to use (the script can be generated
-        with :func:`cmkinitramfs.init.mkinit`).
-    :param files: Files to add to the initramfs, each tuple is in the format
-        ``(src, dest)``. ``src`` is the path on the current system, ``dest``
-        is the path within the initramfs. This is the same format as
-        described in :attr:`cmkinitramfs.init.Data.files`.
-    :param execs: Executables to add to the initramfs. ``src`` can be the
-        base name, it will be searched on the system with :func:`findexec`.
-        Same format as :attr:`cmkinitramfs.init.Data.files`.
-    :param libs: Libraries to add to the initramfs. ``src`` can be the
-        base name, it will be searched on the system with :func:`findlib`.
-        Same format as :attr:`cmkinitramfs.init.Data.files`.
-    :param keymap: Tuple in the format ``(src, dest)``. ``src`` is the
-        keymap to add to the initramfs, ``dest`` is the path of the keymap
-        within the initramfs. If this argument is :data:`None`, no keymap
-        will be added to the initramfs.
-    :param modules: Name of the kernel modules to include in the initramfs
-    """
-
-    # Add necessary files
-    for fsrc, fdest in files:
-        logger.info("Adding file %s", fsrc)
-        initramfs.add_file(fsrc, fdest)
-    for fsrc, fdest in execs:
-        logger.info("Adding executable %s", fsrc)
-        exec_src, exec_dest = findexec(fsrc, root=initramfs.binroot)
-        initramfs.add_file(exec_src, fdest if fdest is not None else exec_dest)
-    for fsrc, fdest in libs:
-        logger.info("Adding library %s", fsrc)
-        lib_src, lib_dest = findlib(fsrc, root=initramfs.binroot)
-        initramfs.add_file(lib_src, fdest if fdest is not None else lib_dest)
-
-    # Add keymap
-    if keymap is not None:
-        logger.info("Adding keymap as %s", keymap[1])
-        initramfs.add_file(*keymap, mode=0o644)
-        with open(keymap[0], 'rb') as bkeymap:
-            if bkeymap.read(len(BINARY_KEYMAP_MAGIC)) != BINARY_KEYMAP_MAGIC:
-                logger.error("Binary keymap %s: bad file format", keymap[0])
-
-    # Add modules
-    for module in modules:
-        logger.info("Adding kernel module %s", module)
-        kmod = find_kmod(module, initramfs.kernel)
-        initramfs.mkdir(os.path.dirname(kmod), parents=True)
-        initramfs.add_file(kmod)
-
-    # Add /init
-    logger.info("Adding init script")
-    initramfs.add_file(init, "/init", mode=0o755)
-
-    # Add busybox
-    logger.info("Adding busybox")
-    busybox_src, busybox_dest = findexec('busybox', root=initramfs.binroot)
-    initramfs.add_file(busybox_src, busybox_dest)
-    for applet in busybox_get_applets(findexec('busybox')[0]):
-        try:
-            initramfs.add_file(busybox_src, applet)
-        except MergeError:
-            logging.debug("Not adding applet %s: file exists", applet)
 
 
 class Initramfs:
@@ -371,17 +295,81 @@ class Initramfs:
         # Copy dependencies
         for dep_src, dep_dest in find_elf_deps_set(src, self.binroot):
             self.add_file(dep_src, dep_dest)
-        if src.endswith('.ko'):
-            for dep in find_kmod_deps(src):
-                dep = find_kmod(dep, self.kernel)
-                self.mkdir(os.path.dirname(dep), parents=True)
-                self.add_file(dep)
 
         # Add file
         if mode is None:
             mode = os.stat(src, follow_symlinks=True).st_mode & 0o7777
         self.add_item(File(mode, self.user, self.group,
                            {dest}, src, hash_file(src)))
+
+    def add_library(self, src: str, dest: Optional[str] = None,
+                    mode: Optional[int] = None) -> None:
+        """Add a library to the initramfs
+
+        :param src: Path or base name of the library to add,
+            if it is not a path, it is searched on the system with
+            :func:`findlib`
+        :param dest: Absolute path of the destination, relative to the
+            initramfs root, defaults to the path of the source library
+        :param mode: File permissions to use, defaults to same as ``src``
+        :raises FileNotFoundError: Library or ELF dependency not found
+        :raises MergeError: Destination file exists and is different,
+            or missing parent directory (raised from :meth:`add_item`)
+        """
+        lib_src, lib_dest = findlib(src, root=self.binroot)
+        self.add_file(lib_src, dest if dest is not None else lib_dest)
+
+    def add_executable(self, src: str, dest: Optional[str] = None,
+                       mode: Optional[int] = None) -> None:
+        """Add an executable to the initramfs
+
+        :param src: Path or base name of the executable to add,
+            if it is not a path, it is searched on the system with
+            :func:`findexec`
+        :param dest: Absolute path of the destination, relative to the
+            initramfs root, defaults to the path of the source executable
+        :param mode: File permissions to use, defaults to same as ``src``
+        :raises FileNotFoundError: Executable or ELF dependency not found
+        :raises MergeError: Destination file exists and is different,
+            or missing parent directory (raised from :meth:`add_item`)
+        """
+        exec_src, exec_dest = findexec(src, root=self.binroot)
+        self.add_file(exec_src, dest if dest is not None else exec_dest)
+
+    def add_kmod(self, module: str, mode: Optional[int] = None) -> None:
+        """Add a kernel module to the initramfs
+
+        :param module: Path or name of the kernel module to add
+        :param mode: File permissions to use, defaults to same as ``module``
+        """
+        kmod = find_kmod(module, self.kernel)
+        for dep in find_kmod_deps(kmod):
+            self.add_kmod(dep, mode=mode)
+        self.mkdir(os.path.dirname(kmod), parents=True)
+        self.add_file(kmod, mode=mode)
+
+    def add_busybox(self, sys_busybox: Optional[str] = None) -> None:
+        """Add busybox and its applets to the initramfs
+
+        Applets will be ignored if a file with the same path
+        already exists. To avoid collision, this method should be called
+        after all needed files have been added.
+
+        :param sys_busybox: Busybox executable to use to get the list of
+            applets, defaults to the one in ``PATH``
+        :raises FileNotFoundError: Busybox executable or ELF dependency
+            not found
+        :raises MergeError: Destination file exists and is different,
+            or missing parent directory (raised from :meth:`add_item`,
+            not raised for applets)
+        """
+        busybox_src, busybox_dest = findexec('busybox', root=self.binroot)
+        self.add_file(busybox_src, busybox_dest)
+        for applet in busybox_get_applets(findexec('busybox')[0]):
+            try:
+                self.add_file(busybox_src, applet)
+            except MergeError:
+                logger.debug("Not adding applet %s: file exists", applet)
 
     def build_to_cpio_list(self, dest: IO[str]) -> None:
         """Write a CPIO list into a file

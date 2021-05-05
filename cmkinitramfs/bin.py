@@ -501,6 +501,9 @@ def find_kmod(module: str, kernel: str) -> str:
     """
 
     logger.debug("Searching module %s for kernel %s", module, kernel)
+    if os.path.isabs(module):
+        logger.debug("Module path is absolute: %s", module)
+        return module
     module_compat = module.replace('_', '-') + '.ko'
     for kmod in _get_all_kmods(kernel):
         if module_compat == os.path.basename(kmod).replace('_', '-'):
