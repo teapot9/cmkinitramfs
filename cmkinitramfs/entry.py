@@ -55,6 +55,7 @@ class Config:
         see :attr:`cmkinitramfs.init.Data.files`
     :param libs: User configured libraries,
         see :attr:`cmkinitramfs.init.Data.files`
+    :param busybox: Needed executables compatibles with busybox implementation
     :param init_path: Path where the init script will be generated
     :param cmkcpiodir_opts: Default options for cmkcpiodir
     :param cmkcpiolist_opts: Default options for cmkcpiolist
@@ -67,6 +68,7 @@ class Config:
     files: FrozenSet[Tuple[str, Optional[str]]]
     execs: FrozenSet[Tuple[str, Optional[str]]]
     libs: FrozenSet[Tuple[str, Optional[str]]]
+    busybox: FrozenSet[str]
     init_path: str
     cmkcpiodir_opts: str
     cmkcpiolist_opts: str
@@ -187,10 +189,8 @@ def read_config(config_file: Optional[str] = None) -> Config:
             files.add((src, dest[0] if dest else None))
     execs = set()
     for data in itertools.chain((root,), mounts):
-        logger.critical("exec %s from %s %s", data.execs, data, repr(ddep))
         execs |= data.execs
         for ddep in data.iter_all_deps():
-            logger.critical("exec %s from %s %s", ddep.execs, ddep, repr(ddep))
             execs |= ddep.execs
     for line in config['DEFAULT'].get('execs', '').split('\n'):
         if line:
@@ -205,6 +205,14 @@ def read_config(config_file: Optional[str] = None) -> Config:
         if line:
             src, *dest = line.split(':')
             libs.add((src, dest[0] if dest else None))
+    busybox = set()
+    for data in itertools.chain((root,), mounts):
+        busybox |= data.busybox
+        for ddep in data.iter_all_deps():
+            busybox |= ddep.busybox
+    for line in config['DEFAULT'].get('busybox', '').split('\n'):
+        if line:
+            busybox.add(line.strip())
 
     modules: Dict[str, List[str]] = {}
     for module in config['DEFAULT'].get('modules', '').split('\n'):
@@ -226,6 +234,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
         files=frozenset(files),
         execs=frozenset(execs),
         libs=frozenset(libs),
+        busybox=frozenset(busybox),
         init_path=config['DEFAULT'].get('init-path', '/tmp/init.sh'),
         cmkcpiodir_opts=config['DEFAULT'].get(
             'cmkcpiodir-default-opts', ''
@@ -405,7 +414,7 @@ def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
 
     # Add busybox
     logger.info("Adding busybox")
-    initramfs.add_busybox()
+    initramfs.add_busybox(needed=config.busybox)
 
 
 def entry_cmkcpiolist() -> None:

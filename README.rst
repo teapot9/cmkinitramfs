@@ -190,6 +190,10 @@ global configuration.
    in directories from ``/etc/ld.so.conf``, ``/etc/ld.so.conf.d/*.conf``,
    and the ``LD_LIBRARY_PATH`` environment variable.
 
+ - ``busybox`` (optional): Additional executables to include in the initramfs.
+   If busybox provides the command, they will not be added. Otherwise,
+   the executable is searched in ``PATH``.
+
  - ``cmkcpiodir-default-opts`` (optional): Options to append to the
    ``cmkcpiodir`` command line.
 

@@ -374,10 +374,13 @@ class LabelData(Data):
 class LuksData(Data):
     """LUKS encrypted block device
 
-    :param source: :class:`Data` to unlock (crypto_LUKS volume)
+    :param source: :class:`Data` to unlock (crypto_LUKS volume),
+        it will be set as a hard dependency
     :param name: Name for the LUKS volume
-    :param key: :class:`Data` to use as key file
-    :param header: :class:`Data` containing the LUKS header
+    :param key: :class:`Data` to use as key file,
+        it will be set as a load dependency
+    :param header: :class:`Data` containing the LUKS header,
+        it will be set as a load dependency
     :param discard: Enable discards
     """
     source: Data
@@ -398,6 +401,11 @@ class LuksData(Data):
         self.key = key
         self.header = header
         self.discard = discard
+        self.add_dep(self.source)
+        if self.key:
+            self.add_load_dep(self.key)
+        if self.header:
+            self.add_load_dep(self.header)
 
     def __str__(self) -> str:
         return self.name
@@ -495,7 +503,8 @@ class MountData(Data):
     """Mount point
 
     :param source: :class:`Data` to use as source
-        (e.g. /dev/sda1, my-luks-data)
+        (e.g. /dev/sda1, my-luks-data),
+        it will be set as a hard dependency
     :param mountpoint: Absolute path of the mountpoint
     :param filesystem: Filesystem (used for ``mount -t filesystem``)
     :param options: Mount options
@@ -585,6 +594,7 @@ class MountData(Data):
             self.execs.add(('fsck.exfat', None))
         elif self.filesystem in ('f2fs',):
             self.execs.add(('fsck.f2fs', None))
+        self.add_dep(self.source)
 
     def __str__(self) -> str:
         return self.mountpoint
@@ -637,7 +647,7 @@ class MdData(Data):
     """MD RAID
 
     :param sources: :class:`Data` to use as sources (e.g. /dev/sda1 and
-        /dev/sdb1; or UUID=foo).
+        /dev/sdb1; or UUID=foo), they will be set as hard dependencies
     :param name: Name for the MD device
     :raises ValueError: No :class:`Data` source
     """
@@ -652,6 +662,8 @@ class MdData(Data):
         self.name = name
         if not self.sources:
             raise ValueError(f"{self} has no source defined")
+        for source in self.sources:
+            self.add_dep(source)
 
     def __str__(self) -> str:
         return self.name
@@ -697,8 +709,10 @@ class MdData(Data):
 class CloneData(Data):
     """Clone a :class:`Data` to another
 
-    :param source: :class:`Data` to use as source
-    :param dest: :class:`Data` to use as destination
+    :param source: :class:`Data` to use as source,
+        it will be set as a load dependency
+    :param dest: :class:`Data` to use as destination,
+        it will be set as a hard dependency
     """
     source: Data
     dest: Data
@@ -708,6 +722,8 @@ class CloneData(Data):
         self.busybox |= {'echo', 'cp'}
         self.source = source
         self.dest = dest
+        self.add_load_dep(self.source)
+        self.add_dep(self.dest)
 
     def __str__(self) -> str:
         return f"{self.source} to {self.dest}"
