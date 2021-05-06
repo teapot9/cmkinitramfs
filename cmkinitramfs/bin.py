@@ -1,6 +1,6 @@
 """Module providing functions to manage binaries and executables
 
-This library also provides utilities like :func:`findexec`.
+This library also provides utilities like :func:`find_exec`.
 Multiple helper functions are also available (e.g. :func:`find_elf_deps_iter`
 and :func:`find_elf_deps_set` to list libraries needed by an ELF executable).
 """
@@ -324,11 +324,11 @@ def find_elf_deps_set(src: str, root: str = '/') -> FrozenSet[Tuple[str, str]]:
     return frozenset(find_elf_deps_iter(src, root))
 
 
-def findlib_iter(lib: str, compat: Optional[str] = None, root: str = '/') \
+def find_lib_iter(lib: str, compat: Optional[str] = None, root: str = '/') \
         -> Iterator[Tuple[str, str]]:
     """Search a library in the system, with globbing
 
-    Same as :func:`findlib` but uses :func:`glob.glob` to find matching
+    Same as :func:`find_lib` but uses :func:`glob.glob` to find matching
     libraries.
 
     :param lib: Glob pattern for the library to search (e.g. ``libgcc_s.*``)
@@ -336,7 +336,7 @@ def findlib_iter(lib: str, compat: Optional[str] = None, root: str = '/') \
         (checked with :func:`_is_elf_compatible`),
         defaults to ``{root}/bin/sh``
     :param root: Path to prepend to all paths found
-    :return: Iterator over ``(lib_src, lib_dest)``, see :func:`findlib`
+    :return: Iterator over ``(lib_src, lib_dest)``, see :func:`find_lib`
     :raises FileNotFoundError: Library not found
     """
     if compat is None:
@@ -373,7 +373,7 @@ def findlib_iter(lib: str, compat: Optional[str] = None, root: str = '/') \
         raise FileNotFoundError(lib)
 
 
-def findlib(lib: str, compat: Optional[str] = None, root: str = '/') \
+def find_lib(lib: str, compat: Optional[str] = None, root: str = '/') \
         -> Tuple[str, str]:
     """Search a library in the system, without globbing
 
@@ -392,7 +392,7 @@ def findlib(lib: str, compat: Optional[str] = None, root: str = '/') \
         path of the library on the initramfs
     :raises FileNotFoundError: Library not found
     """
-    return next(findlib_iter(glob.escape(lib), compat, root))
+    return next(find_lib_iter(glob.escape(lib), compat, root))
 
 
 def parse_path(path: Optional[str] = None, root: str = '/') \
@@ -417,7 +417,7 @@ def parse_path(path: Optional[str] = None, root: str = '/') \
             yield normpath(root + '/' + k)
 
 
-def findexec(executable: str, compat: Optional[str] = None, root: str = '/') \
+def find_exec(executable: str, compat: Optional[str] = None, root: str = '/') \
         -> Tuple[str, str]:
     """Search an executable in the system
 

@@ -439,8 +439,8 @@ findlib
 
 ``findlib`` will search the absolute path of a library on the system.
 It will search in directories from ``/etc/ld.so.conf``, ``LD_LIBRARY_PATH``,
-and default library paths (see :func:`cmkinitramfs.bin.findlib` and
-:func:`cmkinitramfs.bin.findlib_iter`).
+and default library paths (see :func:`cmkinitramfs.bin.find_lib` and
+:func:`cmkinitramfs.bin.find_lib_iter`).
 
 
 Examples

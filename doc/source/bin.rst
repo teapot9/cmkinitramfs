@@ -28,13 +28,13 @@ bin
 
 .. autofunction:: find_elf_deps_set
 
-.. autofunction:: findlib_iter
+.. autofunction:: find_lib_iter
 
-.. autofunction:: findlib
+.. autofunction:: find_lib
 
 .. autofunction:: parse_path
 
-.. autofunction:: findexec
+.. autofunction:: find_exec
 
 .. autofunction:: _get_all_kmods
 

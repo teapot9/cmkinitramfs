@@ -20,7 +20,7 @@ import subprocess
 from typing import IO, Iterable, Iterator, List, Optional, Tuple
 
 from .bin import (find_elf_deps_set, find_kmod, find_kmod_deps,
-                  findexec, findlib)
+                  find_exec, find_lib)
 from .item import Directory, File, Item, MergeError, Node, Symlink
 from .utils import hash_file, normpath, removeprefix
 
@@ -320,7 +320,7 @@ class Initramfs:
 
         :param src: Path or base name of the library to add,
             if it is not a path, it is searched on the system with
-            :func:`findlib`
+            :func:`find_lib`
         :param dest: Absolute path of the destination, relative to the
             initramfs root, defaults to the path of the source library
         :param mode: File permissions to use, defaults to same as ``src``
@@ -328,7 +328,7 @@ class Initramfs:
         :raises MergeError: Destination file exists and is different,
             or missing parent directory (raised from :meth:`add_item`)
         """
-        lib_src, lib_dest = findlib(src, root=self.binroot)
+        lib_src, lib_dest = find_lib(src, root=self.binroot)
         self.add_file(lib_src, dest if dest is not None else lib_dest,
                       mode=mode)
 
@@ -338,7 +338,7 @@ class Initramfs:
 
         :param src: Path or base name of the executable to add,
             if it is not a path, it is searched on the system with
-            :func:`findexec`
+            :func:`find_exec`
         :param dest: Absolute path of the destination, relative to the
             initramfs root, defaults to the path of the source executable
         :param mode: File permissions to use, defaults to same as ``src``
@@ -346,7 +346,7 @@ class Initramfs:
         :raises MergeError: Destination file exists and is different,
             or missing parent directory (raised from :meth:`add_item`)
         """
-        exec_src, exec_dest = findexec(src, root=self.binroot)
+        exec_src, exec_dest = find_exec(src, root=self.binroot)
         self.add_file(exec_src, dest if dest is not None else exec_dest,
                       mode=mode)
 
@@ -384,10 +384,10 @@ class Initramfs:
             not raised for applets)
         """
         if sys_busybox is None:
-            sys_busybox = findexec('busybox')[0]
+            sys_busybox = find_exec('busybox')[0]
         applets = set() | SHELL_SPECIAL_BUILTIN | SHELL_RESERVED_WORDS
 
-        busybox_src, busybox_dest = findexec('busybox', root=self.binroot)
+        busybox_src, busybox_dest = find_exec('busybox', root=self.binroot)
         self.add_file(busybox_src, busybox_dest)
         for applet in busybox_get_applets(sys_busybox):
             applets.add(os.path.basename(applet))

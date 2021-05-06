@@ -18,7 +18,7 @@ from typing import Dict, FrozenSet, List, Optional, Tuple, overload
 import cmkinitramfs
 import cmkinitramfs.data as datamod
 import cmkinitramfs.initramfs as mkramfs
-from .bin import findlib, findlib_iter
+from .bin import find_lib, find_lib_iter
 from .init import mkinit
 from .utils import removeprefix
 
@@ -338,9 +338,9 @@ def entry_findlib() -> None:
 
         try:
             lib_iter = \
-                (findlib(lib, compat=args.compatible, root=args.root),) \
+                (find_lib(lib, compat=args.compatible, root=args.root),) \
                 if not args.glob \
-                else findlib_iter(lib, compat=args.compatible, root=args.root)
+                else find_lib_iter(lib, compat=args.compatible, root=args.root)
             for found, _ in lib_iter:
                 if args.quiet < 3:
                     print(found, end=('\n' if not args.null else '\0'))
