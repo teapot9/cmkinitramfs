@@ -321,7 +321,8 @@ def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
         "umount /proc || umount -l /proc || ", _die('Failed to unmount /proc'),
         "umount /sys || umount -l /sys || ", _die('Failed to unmount /sys'),
         "echo 'INITRAMFS: End'\n",
-        'exec switch_root ', newroot.path(), ' "${INIT}" "$@"\n',
+        'exec switch_root ', newroot.path(), ' "${INIT}" "$@" || ',
+        _die('Failed to switch root'),
         "\n",
     ))
 
