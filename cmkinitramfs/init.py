@@ -175,7 +175,8 @@ def do_init(out: IO[str]) -> None:
         "mount -t devtmpfs none /dev || ",
         _die('Failed to mount /dev'),
         "echo 3 1>'/proc/sys/kernel/printk'\n",
-        "depmod || ", _die('Failed to generate modules.dep'),
+        '[ ! -d "/lib/modules/$(uname -r)" ] || depmod || ',
+        _die('Failed to generate modules.dep'),
         "\n",
     ))
 
