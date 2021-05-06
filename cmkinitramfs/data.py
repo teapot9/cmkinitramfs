@@ -309,23 +309,66 @@ class UuidData(Data):
     :class:`Data` classes (e.g. a MD UUID).
 
     :param uuid: UUID of the data
+    :param partition: If :data:`True`, the UUID is treated as a partition UUID
     """
     uuid: str
+    partition: bool
 
-    def __init__(self, uuid: str):
+    def __init__(self, uuid: str, partition: bool = False):
         super().__init__()
-        self.busybox |= {'findfs'}
+        if partition:
+            # PARTUUID is only available in util-linux findfs
+            self.execs |= {('findfs', None)}
+        else:
+            self.busybox |= {'findfs'}
         self.uuid = uuid
+        self.partition = partition
 
     def __str__(self) -> str:
-        return "UUID=" + self.uuid
+        return ('PARTUUID=' if self.partition else 'UUID=') + self.uuid
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and super().__eq__(other) \
-            and self.uuid == other.uuid
+            and self.uuid == other.uuid and self.partition == other.partition
 
     def path(self) -> str:
-        return '"$(findfs ' + quote('UUID=' + self.uuid) + ')"'
+        prefix = 'PARTUUID=' if self.partition else 'UUID='
+        return '"$(findfs ' + quote(prefix + self.uuid) + ')"'
+
+
+class LabelData(Data):
+    """Label of a data
+
+    The label can be a filesystem or partition label, or a label known
+    by other :class:`Data` classes.
+
+    :param label: Label of the data
+    :param partition: If :data:`True`, the label is treated as a partition
+        label
+    """
+    label: str
+    partition: bool
+
+    def __init__(self, label: str, partition: bool = False):
+        super().__init__()
+        if partition:
+            # PARTLABEL is only available in util-linux findfs
+            self.execs |= {('findfs', None)}
+        else:
+            self.busybox |= {'findfs'}
+        self.label = label
+        self.partition = partition
+
+    def __str__(self) -> str:
+        return ('PARTLABEL=' if self.partition else 'LABEL=') + self.label
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.label == other.label and self.partition == other.partition
+
+    def path(self) -> str:
+        prefix = 'PARTLABEL=' if self.partition else 'LABEL='
+        return '"$(findfs ' + quote(prefix + self.label) + ')"'
 
 
 class LuksData(Data):

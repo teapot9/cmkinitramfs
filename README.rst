@@ -134,10 +134,14 @@ Some options expects a data source as input, there are 4 data identifier
 formats:
 
  - ``data-name``: data defined in the section with the same name.
+ - ``/absolute/path``: same as ``PATH=/absolute/path``.
  - ``DATA=data-name``: same as ``data-name``.
  - ``PATH=/path/foo/bar``: data at the path ``/path/foo/bar``, this can
    be a directory, or a block device.
  - ``UUID=8490-47b4``: filesystem with UUID ``8490-47b4``.
+ - ``LABEL=foo``: filesystem with label ``foo``.
+ - ``PARTUUID=1234-5678``: partition with UUID ``1234-5678``.
+ - ``PARTLABEL=foo``: partition with label ``foo``.
 
 DEFAULT section
 ---------------

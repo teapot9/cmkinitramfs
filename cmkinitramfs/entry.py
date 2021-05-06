@@ -18,8 +18,9 @@ from typing import Dict, FrozenSet, List, Optional, Tuple, overload
 import cmkinitramfs
 import cmkinitramfs.data as datamod
 import cmkinitramfs.initramfs as mkramfs
-from cmkinitramfs.bin import findlib, findlib_iter
-from cmkinitramfs.init import mkinit
+from .bin import findlib, findlib_iter
+from .init import mkinit
+from .utils import removeprefix
 
 logger = logging.getLogger(__name__)
 _VERSION_INFO = \
@@ -90,17 +91,29 @@ def read_config(config_file: Optional[str] = None) -> Config:
         """Find a Data object from a data string"""
         if data_str is None:
             return None
-        if data_str[:5] == 'UUID=':
-            if data_dic.get(data_str[5:]) is None:
-                data_dic[data_str[5:]] = datamod.UuidData(data_str[5:])
-            return data_dic[data_str[5:]]
-        if data_str[:5] == 'PATH=':
-            if data_dic.get(data_str[5:]) is None:
-                data_dic[data_str[5:]] = datamod.PathData(data_str[5:])
-            return data_dic[data_str[5:]]
-        if data_str[:5] == 'DATA=':
-            return data_dic[data_str[5:]]
-        if data_dic.get(data_str) is None and os.path.isabs(data_str):
+        if data_str.startswith('PATH='):
+            data_str = removeprefix(data_str, 'PATH=')
+            if data_dic.get(data_str) is None:
+                data_dic[data_str] = datamod.PathData(data_str)
+        elif data_str.startswith('UUID='):
+            data_str = removeprefix(data_str, 'UUID=')
+            if data_dic.get(data_str) is None:
+                data_dic[data_str] = datamod.UuidData(data_str, False)
+        elif data_str.startswith('LABEL='):
+            data_str = removeprefix(data_str, 'LABEL=')
+            if data_dic.get(data_str) is None:
+                data_dic[data_str] = datamod.LabelData(data_str, False)
+        elif data_str.startswith('PARTUUID='):
+            data_str = removeprefix(data_str, 'PARTUUID=')
+            if data_dic.get(data_str) is None:
+                data_dic[data_str] = datamod.UuidData(data_str, True)
+        elif data_str.startswith('PARTLABEL='):
+            data_str = removeprefix(data_str, 'PARTLABEL=')
+            if data_dic.get(data_str) is None:
+                data_dic[data_str] = datamod.LabelData(data_str, True)
+        elif data_str.startswith('DATA='):
+            data_str = removeprefix(data_str, 'DATA=')
+        elif data_dic.get(data_str) is None and os.path.isabs(data_str):
             data_dic[data_str] = datamod.PathData(data_str)
         return data_dic[data_str]
 
@@ -174,8 +187,10 @@ def read_config(config_file: Optional[str] = None) -> Config:
             files.add((src, dest[0] if dest else None))
     execs = set()
     for data in itertools.chain((root,), mounts):
+        logger.critical("exec %s from %s %s", data.execs, data, repr(ddep))
         execs |= data.execs
         for ddep in data.iter_all_deps():
+            logger.critical("exec %s from %s %s", ddep.execs, ddep, repr(ddep))
             execs |= ddep.execs
     for line in config['DEFAULT'].get('execs', '').split('\n'):
         if line:

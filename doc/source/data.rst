@@ -21,6 +21,9 @@ data
 .. autoclass:: UuidData
    :show-inheritance:
 
+.. autoclass:: LabelData
+   :show-inheritance:
+
 .. autoclass:: LuksData
    :show-inheritance:
 
