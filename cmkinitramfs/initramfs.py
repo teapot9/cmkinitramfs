@@ -17,7 +17,7 @@ import os
 import os.path
 import platform
 import subprocess
-from typing import IO, Iterable, Iterator, List, Optional, Tuple
+from typing import IO, Iterable, Iterator, List, Optional, Set, Tuple
 
 from .bin import (find_elf_deps_set, find_kmod, find_kmod_deps,
                   find_exec, find_lib)
@@ -116,23 +116,24 @@ class Initramfs:
     :param group: Default group to use when creating items
     :param binroot: Root directory where binary files are found
         (executables and libraries)
-    :param kernel: Kernel version of the initramfs,
+    :param kernels: Kernel versions of the initramfs,
         defaults to the running kernel version
     :param items: Items in the initramfs
     """
     user: int
     group: int
     binroot: str
-    kernel: str
+    kernels: Set[str]
     items: List[Item]
 
     def __init__(self, user: int = 0, group: int = 0, binroot: str = '/',
-                 kernel: Optional[str] = None) -> None:
+                 kernels: Optional[Iterable[str]] = None) -> None:
         self.user = user
         self.group = group
         self.binroot = binroot
-        self.kernel = kernel if kernel is not None else platform.release()
-        logger.debug("Target kernel: %s", self.kernel)
+        self.kernels = set(kernels) if kernels is not None \
+            else {platform.release()}
+        logger.debug("Target kernels: %s", self.kernels)
         self.items = []
         self.__mklayout()
 
@@ -169,6 +170,14 @@ class Initramfs:
         self.add_item(Node(0o666, self.user, self.group, '/dev/null',
                            Node.NodeType.CHARACTER, 1, 3))
 
+        # Add kernel modules information
+        for kernel in self.kernels:
+            kmod_dir = f'/lib/modules/{kernel}'
+            self.mkdir(kmod_dir, mode=0o755, parents=True)
+            self.add_file(kmod_dir + '/modules.order', mode=0o640)
+            self.add_file(kmod_dir + '/modules.builtin', mode=0o640)
+            self.add_file(kmod_dir + '/modules.builtin.modinfo', mode=0o640)
+
     def __iter__(self) -> Iterator[Item]:
         """Iterate over the :class:`Item` instances in the initramfs"""
         return iter(self.items)
@@ -188,7 +197,7 @@ class Initramfs:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.user == other.user \
             and self.group == other.group and self.binroot == other.binroot \
-            and self.kernel == other.kernel and self.items == other.items
+            and self.kernels == other.kernels and self.items == other.items
 
     def add_item(self, new_item: Item) -> None:
         """Add an item to the initramfs
@@ -356,11 +365,16 @@ class Initramfs:
         :param module: Path or name of the kernel module to add
         :param mode: File permissions to use, defaults to same as ``module``
         """
-        kmod = find_kmod(module, self.kernel)
-        for dep in find_kmod_deps(kmod):
-            self.add_kmod(dep, mode=mode)
-        self.mkdir(os.path.dirname(kmod), parents=True)
-        self.add_file(kmod, mode=mode)
+
+        def _add_kmod(module: str, kernel: str) -> None:
+            kmod = find_kmod(module, kernel)
+            for dep in find_kmod_deps(kmod):
+                _add_kmod(dep, kernel)
+            self.mkdir(os.path.dirname(kmod), parents=True)
+            self.add_file(kmod, mode=mode)
+
+        for kernel in self.kernels:
+            _add_kmod(module, kernel)
 
     def add_busybox(self, needed: Iterable[str] = (),
                     sys_busybox: Optional[str] = None) -> None:

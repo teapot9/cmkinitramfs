@@ -175,8 +175,12 @@ def do_init(out: IO[str]) -> None:
         "mount -t devtmpfs none /dev || ",
         _die('Failed to mount /dev'),
         "echo 3 1>'/proc/sys/kernel/printk'\n",
-        '[ ! -d "/lib/modules/$(uname -r)" ] || depmod || ',
-        _die('Failed to generate modules.dep'),
+        'if [ -d "/lib/modules/$(uname -r)" ]; then\n',
+        '\tdepmod || ', _die('Failed to generate modules.dep'),
+        'else\n',
+        '\tprintk "WARNING: This initramfs may be incompatible with ',
+        'the current kernel $(uname -r)"\n',
+        'fi\n',
         "\n",
     ))
 

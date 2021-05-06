@@ -373,8 +373,8 @@ def _common_parser_cmkcpio() -> argparse.ArgumentParser:
         help="set the root directory for binaries (executables and libraries)"
     )
     parser.add_argument(
-        '--kernel', '-K', type=str, default=None,
-        help=("set the target kernel version of the initramfs, "
+        '--kernel', '-K', action='append', type=str, default=None,
+        help=("set the target kernel versions of the initramfs, "
               "defaults to the running kernel")
     )
     return parser
@@ -481,7 +481,7 @@ def entry_cmkcpiolist() -> None:
             user=(0 if not args.debug else os.getuid()),
             group=(0 if not args.debug else os.getgid()),
             binroot=args.binroot,
-            kernel=args.kernel,
+            kernels=args.kernel,
         )
         _build_initramfs(initramfs, config)
 
@@ -583,7 +583,7 @@ def entry_cmkcpiodir() -> None:
             user=(0 if not args.debug else os.getuid()),
             group=(0 if not args.debug else os.getgid()),
             binroot=args.binroot,
-            kernel=args.kernel,
+            kernels=args.kernel,
         )
         _build_initramfs(initramfs, config)
 
