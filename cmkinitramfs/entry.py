@@ -163,10 +163,10 @@ def read_config(config_file: Optional[str] = None) -> Config:
         if data_id not in config.sections():
             continue
         data_config = config[data_id]
-        for dep in data_config['need'].strip().split(','):
+        for dep in data_config.get('need', '').split(','):
             if dep.strip():
                 data.add_dep(find_data(dep.strip()))
-        for ldep in data_config['load-need'].strip().split(','):
+        for ldep in data_config.get('load-need', '').split(','):
             if ldep.strip():
                 data.add_load_dep(find_data(ldep.strip()))
 
@@ -174,7 +174,8 @@ def read_config(config_file: Optional[str] = None) -> Config:
     root = find_data(config['DEFAULT']['root'])
     mounts = tuple(
         find_data(k.strip())
-        for k in config['DEFAULT']['mountpoints'].strip().split(',')
+        for k in config['DEFAULT'].get('mountpoints', '').split(',')
+        if k.strip()
     )
 
     # Define needed files, execs and libs

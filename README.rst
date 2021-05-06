@@ -160,7 +160,7 @@ global configuration.
 
  - ``root`` (mandatory): Data identifier for the data to use as new root.
 
- - ``mountpoints`` (mandatory): Comma separated list of data identifier
+ - ``mountpoints`` (optional): Comma separated list of data identifier
    to load in addition of rootfs. Can be empty.
 
  - ``keymap`` (optional): Boolean value defining if a keymap should be
@@ -304,11 +304,11 @@ Clone a source to a destination.
  - ``destination`` (mandatory): Data identifier of the destination
    of the clone.
 
-.. |need| replace:: ``need`` (mandatory): Hard dependencies: comma separated
+.. |need| replace:: ``need`` (optional): Hard dependencies: comma separated
    list of data identifiers. Those dependencies are required to load
    *and* use the data. Can be empty.
 
-.. |load-need| replace:: ``load-need`` (mandatory): Load dependencies: comma
+.. |load-need| replace:: ``load-need`` (optional): Load dependencies: comma
    separated list of data identifiers. Those dependencies are only required
    to load the data, they can be unloaded when the data has been successfully
    loaded. (e.g. A LUKS key, an archive to decompress.) Can be empty.
