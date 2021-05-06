@@ -58,6 +58,15 @@ for more information.
 Installation
 ============
 
+Compatibility
+-------------
+
+Python version: this library is compatible with
+**Python ≥ 3.7**.
+
+Python implementation: this library is compatible with
+**CPython** and **PyPy**.
+
 Dependencies
 ------------
 
