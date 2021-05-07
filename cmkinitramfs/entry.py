@@ -19,7 +19,8 @@ import cmkinitramfs
 import cmkinitramfs.data as datamod
 import cmkinitramfs.initramfs as mkramfs
 from .bin import find_lib, find_lib_iter
-from .init import mkinit
+from .init import (mkinit, BUSYBOX_COMMON_DEPS, BUSYBOX_KEYMAP_DEPS,
+                   BUSYBOX_KMOD_DEPS)
 from .utils import removeprefix
 
 logger = logging.getLogger(__name__)
@@ -378,11 +379,16 @@ def _common_parser_cmkcpio() -> argparse.ArgumentParser:
         help=("set the target kernel versions of the initramfs, "
               "defaults to the running kernel")
     )
+    parser.add_argument(
+        '--no-kmod', action='store_true', default=False,
+        help="disable kernel modules support",
+    )
     return parser
 
 
 def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
     """Add files to the initramfs from the configuration"""
+    busybox_deps = set() | config.busybox | BUSYBOX_COMMON_DEPS
 
     # Add necessary files
     for src, dest in config.files:
@@ -397,6 +403,7 @@ def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
 
     # Add keymap
     if config.keymap is not None:
+        busybox_deps |= BUSYBOX_KEYMAP_DEPS
         logger.info("Adding keymap as %s", config.keymap[2])
         with open(config.keymap[1], 'rb') as bkeymap:
             if bkeymap.read(len(BINARY_KEYMAP_MAGIC)) != BINARY_KEYMAP_MAGIC:
@@ -405,9 +412,11 @@ def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
         initramfs.add_file(*config.keymap[1:3], mode=0o644)
 
     # Add module
-    for module, _ in config.modules:
-        logger.info("Adding kernel module %s", module)
-        initramfs.add_kmod(module)
+    if initramfs.kernels:
+        busybox_deps |= BUSYBOX_KMOD_DEPS
+        for module, _ in config.modules:
+            logger.info("Adding kernel module %s", module)
+            initramfs.add_kmod(module)
 
     # Add /init
     logger.info("Adding init script")
@@ -415,7 +424,7 @@ def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
 
     # Add busybox
     logger.info("Adding busybox")
-    initramfs.add_busybox(needed=config.busybox)
+    initramfs.add_busybox(needed=busybox_deps)
 
 
 def entry_cmkcpiolist() -> None:
@@ -482,7 +491,7 @@ def entry_cmkcpiolist() -> None:
             user=(0 if not args.debug else os.getuid()),
             group=(0 if not args.debug else os.getgid()),
             binroot=args.binroot,
-            kernels=args.kernel,
+            kernels=(() if args.no_kmod else args.kernel),
         )
         _build_initramfs(initramfs, config)
 
@@ -584,7 +593,7 @@ def entry_cmkcpiodir() -> None:
             user=(0 if not args.debug else os.getuid()),
             group=(0 if not args.debug else os.getgid()),
             binroot=args.binroot,
-            kernels=args.kernel,
+            kernels=(() if args.no_kmod else args.kernel),
         )
         _build_initramfs(initramfs, config)
 

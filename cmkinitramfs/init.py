@@ -20,6 +20,17 @@ from typing import Iterable, IO, Optional, Tuple
 from .data import _die, Data
 
 
+#: Global Busybox applet dependencies
+BUSYBOX_COMMON_DEPS = {
+    '[', 'cat', 'cut', 'echo', 'env', 'exec', 'exit', 'export', 'mount',
+    'set', 'switch_root', 'sync', 'test', 'umount', 'uname',
+}
+#: Keymap loading Busybox applet dependencies
+BUSYBOX_KEYMAP_DEPS = {'loadkmap', 'kbd_mode'}
+#: Kernel module loading Busybox applet dependencies
+BUSYBOX_KMOD_DEPS = {'depmod', 'modprobe'}
+
+
 class Breakpoint(Enum):
     """Breakpoint in the boot process
 
@@ -175,12 +186,8 @@ def do_init(out: IO[str]) -> None:
         "mount -t devtmpfs none /dev || ",
         _die('Failed to mount /dev'),
         "echo 3 1>'/proc/sys/kernel/printk'\n",
-        'if [ -d "/lib/modules/$(uname -r)" ]; then\n',
-        '\tdepmod || ', _die('Failed to generate modules.dep'),
-        'else\n',
-        '\tprintk "WARNING: This initramfs may be incompatible with ',
-        'the current kernel $(uname -r)"\n',
-        'fi\n',
+        '[ ! -d "/lib/modules/$(uname -r)" ] || depmod || ',
+        _die('Failed to generate modules.dep'),
         "\n",
     ))
 
@@ -226,10 +233,16 @@ def do_cmdline(out: IO[str]) -> None:
         "\t\t;;\n",
         "\trd.debug) RD_DEBUG=true ;;\n",
         "\trd.panic) RD_PANIC=true ;;\n",
+        "\t*) unknown_cmd=\"${unknown_cmd-}${unknown_cmd+ }${cmdline}\" ;;\n",
         "\tesac\n",
         "done\n",
         "\n",
-        "[ -n \"${RD_DEBUG+x}\" ] && PS4='+ $0:$LINENO: ' && set -x\n",
+        "if [ -n \"${RD_DEBUG+x}\" ]; then\n"
+        "\tPS4='+ $0:$LINENO: '\n",
+        "\tset -x\n",
+        "\tprintk \"DEBUG: Skipped unknown cmdlines: ${unknown_cmd-}\"\n",
+        "fi\n",
+        "unset unknown_cmd\n",
         "\n",
     ))
 
@@ -314,12 +327,15 @@ def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
         'printk "Run ${INIT} as init process"\n',
         'if [ -n "${RD_DEBUG+x}" ]; then\n',
         '\tprintk \'  with arguments:\'\n',
-        '\tfor arg in "$@"; do printk "    ${arg}"; done\n',
+        '\tfor arg in "${INIT}" "$@"; do printk "    ${arg}"; done\n',
         '\tprintk \'  with environment:\'\n',
-        '\tenv | while read -r var; do printk "    ${var}"; done\n',
+        '\tOLDIFS="${IFS}"\n',
+        '\tIFS="$(printf \'\\n\\b\')"\n',
+        '\tfor var in $(env); do printk "    ${var}"; done\n',
+        '\tIFS="${OLDIFS}"\n',
         'fi\n',
 
-        "verb=\"$(awk '{ print $4 }' /proc/sys/kernel/printk)\"\n",
+        'verb="$(cut -d"$(printf \'\\t\')" -f4 -s /proc/sys/kernel/printk)"\n',
         'echo "${verb}" >/proc/sys/kernel/printk\n',
         "umount /dev || umount -l /dev || ", _die('Failed to unmount /dev'),
         "umount /proc || umount -l /proc || ", _die('Failed to unmount /proc'),
