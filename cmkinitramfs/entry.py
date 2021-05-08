@@ -13,14 +13,15 @@ import shlex
 import shutil
 import sys
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, List, Optional, Tuple, overload
+from typing import (Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple,
+                    overload)
 
 import cmkinitramfs
 import cmkinitramfs.data as datamod
 import cmkinitramfs.initramfs as mkramfs
 from .bin import find_lib, find_lib_iter
-from .init import (mkinit, BUSYBOX_COMMON_DEPS, BUSYBOX_KEYMAP_DEPS,
-                   BUSYBOX_KMOD_DEPS)
+from .init import (mkinit, Breakpoint, BUSYBOX_COMMON_DEPS,
+                   BUSYBOX_KEYMAP_DEPS, BUSYBOX_KMOD_DEPS)
 from .utils import removeprefix
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,8 @@ class Config:
     :param cmkcpiolist_opts: Default options for cmkcpiolist
     :param modules: Kernel modules to be loaded in the initramfs:
         ``(module, (arg, ...))``. See :func:`cmkinitramfs.init.mkinit`.
+    :param scripts: User scripts to run at given breakpoints.
+        See ``scripts`` for :func:`cmkinitramfs.init.mkinit`.
     """
     root: datamod.Data
     mounts: Tuple[datamod.Data, ...]
@@ -74,6 +77,7 @@ class Config:
     cmkcpiodir_opts: str
     cmkcpiolist_opts: str
     modules: Tuple[Tuple[str, Tuple[str, ...]], ...]
+    scripts: Mapping[Breakpoint, Iterable[str]]
 
 
 def read_config(config_file: Optional[str] = None) -> Config:
@@ -187,7 +191,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
             files |= ddep.files
     for line in config['DEFAULT'].get('files', '').split('\n'):
         if line:
-            src, *dest = line.split(':')
+            src, *dest = line.split(':', maxsplit=1)
             files.add((src, dest[0] if dest else None))
     execs = set()
     for data in itertools.chain((root,), mounts):
@@ -196,7 +200,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
             execs |= ddep.execs
     for line in config['DEFAULT'].get('execs', '').split('\n'):
         if line:
-            src, *dest = line.split(':')
+            src, *dest = line.split(':', maxsplit=1)
             execs.add((src, dest[0] if dest else None))
     libs = set()
     for data in itertools.chain((root,), mounts):
@@ -205,7 +209,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
             libs |= ddep.libs
     for line in config['DEFAULT'].get('libs', '').split('\n'):
         if line:
-            src, *dest = line.split(':')
+            src, *dest = line.split(':', maxsplit=1)
             libs.add((src, dest[0] if dest else None))
     busybox = set()
     for data in itertools.chain((root,), mounts):
@@ -223,6 +227,20 @@ def read_config(config_file: Optional[str] = None) -> Config:
             if modules.get(mod_name) is None:
                 modules[mod_name] = []
             modules[mod_name].extend(mod_args)
+
+    # User scripts
+    breakpoints = {
+        'early': Breakpoint.EARLY,
+        'init': Breakpoint.INIT,
+        'module': Breakpoint.MODULE,
+        'rootfs': Breakpoint.ROOTFS,
+        'mount': Breakpoint.MOUNT,
+    }
+    scripts: Dict[Breakpoint, List[str]] = {k: [] for k in Breakpoint}
+    for script in config['DEFAULT'].get('scripts', '').split('\n'):
+        if script:
+            bname, script = script.split(':', maxsplit=1)
+            scripts[breakpoints[bname.strip().lower()]].append(script.strip())
 
     # Create dictionnary to return
     ret_cfg = Config(
@@ -245,6 +263,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
             'cmkcpiolist-default-opts', ''
         ),
         modules=tuple((name, tuple(args)) for name, args in modules.items()),
+        scripts=scripts,
     )
 
     # Configure final data sources
@@ -481,6 +500,7 @@ def entry_cmkcpiolist() -> None:
             mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
             modules=config.modules,
+            scripts=config.scripts,
         )
 
     # Initramfs
@@ -583,6 +603,7 @@ def entry_cmkcpiodir() -> None:
             mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
             modules=config.modules,
+            scripts=config.scripts,
         )
 
     # Initramfs

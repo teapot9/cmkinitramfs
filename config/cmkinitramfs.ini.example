@@ -15,6 +15,7 @@
 #   - Lock the key since we don't need it anymore
 #   - Enable the system/root LV
 #   - Mount /
+#   - User script: print the content of /dev
 #   - Enable the system/usr LV
 #   - Mount /usr
 #
@@ -27,6 +28,9 @@ keymap-src = fr
 #keymap-dest = /root/keymap.bmap
 init = /sbin/openrc-init
 files = /root/key:/root/key.luks
+scripts =
+	rootfs: echo 'Content of /dev:'
+	rootfs: ls /dev
 
 [md-main]
 type = md

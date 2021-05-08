@@ -213,6 +213,13 @@ global configuration.
    One module per line, each line with the module name followed by the
    module parameters (e.g. ``mymodule foo=bar``).
 
+ - ``scripts`` (optional): User scripts to run at a given breakpoint.
+   One user script per line with the format ``breakpoint:script``.
+   The script ``script`` will be run at the breakpoint ``breakpoint``.
+   A list of available breakpoints is available in
+   :class:`cmkinitramfs.init.Breakpoint`.
+   These scripts will be run wether the breakpoint is enabled or not.
+
 LUKS data sections
 ------------------
 
@@ -316,6 +323,20 @@ Clone a source to a destination.
 
 Usage
 =====
+
+Kernel command-line parameters
+------------------------------
+
+The init script will check the Kernel cmdline for known parameters.
+
+ - ``init=<path to init>``: Set the init process to run after the initramfs.
+ - ``rd.break=<breakpoint>``: Drop into a shell at a given point.
+   See :class:`cmkinitramfs.init.Breakpoint`.
+ - ``rd.debug``: Show debugging informations.
+ - ``rd.panic``: On fatal error: cause a kernel panic rather than drop
+   into a shell.
+
+For more details, see :func:`cmkinitramfs.init.do_cmdline`.
 
 cmkinit
 -------

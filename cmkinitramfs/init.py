@@ -15,7 +15,7 @@ import itertools
 import locale
 from enum import Enum, auto
 from shlex import quote
-from typing import Iterable, IO, Optional, Tuple
+from typing import Iterable, IO, Mapping, Optional, Tuple
 
 from .data import _die, Data
 
@@ -284,11 +284,13 @@ def do_module(out: IO[str], module: str, *args: str) -> None:
     ))
 
 
-def do_break(out: IO[str], breakpoint_: Breakpoint) -> None:
+def do_break(out: IO[str], breakpoint_: Breakpoint,
+             scripts: Iterable[str] = ()) -> None:
     """Drop into a shell if rd.break is set
 
     :param out: Stream to write into
     :param breakpoint_: Which breakpoint to check
+    :param scripts: User commands to run before the breakpoint
     """
     if breakpoint_ is Breakpoint.EARLY:
         breakname = 'RD_BREAK_EARLY'
@@ -303,6 +305,11 @@ def do_break(out: IO[str], breakpoint_: Breakpoint) -> None:
     else:
         raise ValueError(f"Unknown breakpoint: {breakpoint_}")
 
+    if scripts:
+        out.write(f"echo 'Running user scripts for {breakpoint_}'\n")
+        for script in scripts:
+            out.writelines((script, "\n"))
+        out.write("\n")
     out.writelines((
         "[ -n \"${", breakname, "+x}\" ] && rescue_shell ",
         quote(f"Reached {breakpoint_}"),
@@ -353,6 +360,7 @@ def mkinit(
         mounts: Iterable[Data] = (),
         keymap: Optional[str] = None,
         modules: Iterable[Tuple[str, Iterable[str]]] = (),
+        scripts: Optional[Mapping[Breakpoint, Iterable[str]]] = None,
         ) -> None:  # noqa: E123
     """Create the init script
 
@@ -363,6 +371,9 @@ def mkinit(
     :param modules: Kernel modules to be loaded in the initramfs:
         ``(module, (arg, ...))``. ``module`` is the module name string,
         and ``(arg, ...)``` is the iterable with the module parameters.
+    :param scripts: User commands to run. ``{breakpoint: commands}``:
+        ``breakpoint`` is the :class:`Breakpoint` where the commands will
+        be run. ``commands`` is the iterable with the commands.
     """
 
     datatypes = set()
@@ -370,9 +381,11 @@ def mkinit(
         datatypes.add(type(data))
         for dep in data.iter_all_deps():
             datatypes.add(type(dep))
+    if scripts is None:
+        scripts = {}
 
     do_header(out)
-    do_break(out, Breakpoint.EARLY)
+    do_break(out, Breakpoint.EARLY, scripts.get(Breakpoint.EARLY, ()))
     do_init(out)
     for datatype in datatypes:
         datatype.initialize(out)
@@ -380,13 +393,13 @@ def mkinit(
     if keymap is not None:
         do_keymap(out, keymap,
                   unicode=(locale.getdefaultlocale()[1] == 'UTF-8'))
-    do_break(out, Breakpoint.INIT)
+    do_break(out, Breakpoint.INIT, scripts.get(Breakpoint.INIT, ()))
     for mod_name, mod_args in modules:
         do_module(out, mod_name, *mod_args)
-    do_break(out, Breakpoint.MODULE)
+    do_break(out, Breakpoint.MODULE, scripts.get(Breakpoint.MODULE, ()))
     root.load(out)
-    do_break(out, Breakpoint.ROOTFS)
+    do_break(out, Breakpoint.ROOTFS, scripts.get(Breakpoint.ROOTFS, ()))
     for mount in mounts:
         mount.load(out)
-    do_break(out, Breakpoint.MOUNT)
+    do_break(out, Breakpoint.MOUNT, scripts.get(Breakpoint.MOUNT, ()))
     do_switch_root(out, root)
