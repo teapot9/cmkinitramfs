@@ -11,11 +11,11 @@ init
 
 .. autofunction:: _fun_rescue_shell
 
-.. autofunction:: _fun_printk
-
 .. autofunction:: _fun_panic
 
 .. autofunction:: _fun_die
+
+.. autofunction:: _fun_log
 
 .. autofunction:: do_header
 

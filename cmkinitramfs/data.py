@@ -28,7 +28,7 @@ def _die(message: str, newline: bool = True) -> str:
         single quoted and escaped
     """
     end = '\n' if newline else ''
-    return f"die {quote(f'FATAL: {message}')}{end}"
+    return f'die {quote(message)}{end}'
 
 
 class Data:
@@ -395,7 +395,6 @@ class LuksData(Data):
         super().__init__()
         self.execs.add(('cryptsetup', None))
         self.libs.add(('libgcc_s.so.1', None))
-        self.busybox |= {'echo'}
         self.source = source
         self.name = name
         self.key = key
@@ -422,7 +421,7 @@ class LuksData(Data):
         discard = '--allow-discards ' if self.discard else ''
         self._pre_load(out)
         out.writelines((
-            f"echo 'Unlocking LUKS device {self}'\n",
+            f"info 'Unlocking LUKS device {self}'\n",
             "cryptsetup ", header, key_file, discard,
             f"open {self.source.path()} {quote(self.name)} || ",
             _die(f'Failed to unlock LUKS device {self}'),
@@ -433,7 +432,7 @@ class LuksData(Data):
     def unload(self, out: IO[str]) -> None:
         self._pre_unload(out)
         out.writelines((
-            f"echo 'Closing LUKS device {self}'\n",
+            f"info 'Closing LUKS device {self}'\n",
             f"cryptsetup close {quote(self.name)} || ",
             _die(f'Failed to close LUKS device {self}'),
             "\n",
@@ -456,7 +455,6 @@ class LvmData(Data):
     def __init__(self, vg_name: str, lv_name: str):
         super().__init__()
         self.execs.add(('lvm', None))
-        self.busybox |= {'echo'}
         self.vg_name = vg_name
         self.lv_name = lv_name
 
@@ -470,7 +468,7 @@ class LvmData(Data):
     def load(self, out: IO[str]) -> None:
         self._pre_load(out)
         out.writelines((
-            f"echo 'Enabling LVM logical volume {self}'\n",
+            f"info 'Enabling LVM logical volume {self}'\n",
             "lvm lvchange --sysinit -a ly ",
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || ",
             _die(f'Failed to enable LVM logical volume {self}'),
@@ -483,7 +481,7 @@ class LvmData(Data):
     def unload(self, out: IO[str]) -> None:
         self._pre_unload(out)
         out.writelines((
-            f"echo 'Disabling LVM logical volume {self}'\n",
+            f"info 'Disabling LVM logical volume {self}'\n",
             "lvm lvchange --sysinit -a ln ",
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || ",
             _die(f'Failed to disable LVM logical volume {self}'),
@@ -533,14 +531,16 @@ class MountData(Data):
         :param out: Stream to write into
         """
         fsck_err = {
-            1: "Filesystem errors corrected",
-            2: "System should be rebooted",
-            4: "Filesystem errors left uncorrected",
-            8: "Operational error",
-            16: "Usage or syntax error",
-            32: "Checking canceled by user request",
-            128: "Shared-library error",
+            1: ('notice', "Filesystem errors corrected"),
+            2: ('notice', "System should be rebooted"),
+            4: ('alert', "Filesystem errors left uncorrected"),
+            8: ('crit', "Operational error"),
+            16: ('crit', "Usage or syntax error"),
+            32: ('err', "Checking canceled by user request"),
+            128: ('crit', "Shared-library error"),
         }
+        code_err = 4 | 8 | 16 | 32 | 64 | 128
+        code_reboot = 2
 
         out.writelines((
             'mount_fsck()\n',
@@ -549,16 +549,16 @@ class MountData(Data):
             '\tfsck_ret=$?\n'
             '\t[ "${fsck_ret}" -eq 0 ] && return 0\n',
         ))
-        for err_code, err_str in fsck_err.items():
+        for err_code in fsck_err:
+            err_call, err_str = fsck_err[err_code]
             out.writelines((
                 f'\t[ "$((fsck_ret & {err_code}))" -eq {err_code} ] && ',
-                'printk ', quote(f"fsck: {err_str}"), '\n',
+                err_call, ' ', quote(f"fsck: {err_str}"), '\n',
             ))
-        # 252 = 4 | 8 | 16 | 32 | 64 | 128
         out.writelines((
-            '\t[ "$((fsck_ret & 252))" -ne 0 ] && return 1\n',
-            '\tif [ "$((fsck_ret & 2))" -eq 2 ]; then ',
-            'printk \'Rebooting...\'; reboot -f; fi\n',
+            '\t[ "$((fsck_ret & ', str(code_err), '))" -ne 0 ] && return 1\n',
+            '\tif [ "$((fsck_ret & ', str(code_reboot), '))" -eq 2 ]; then ',
+            'notice \'Rebooting...\'; reboot -f; fi\n',
             '\treturn 0\n',
             '}\n',
             '\n',
@@ -572,8 +572,7 @@ class MountData(Data):
     def __init__(self, source: Data, mountpoint: str, filesystem: str,
                  options: str = "ro"):
         super().__init__()
-        self.busybox |= {'fsck', '[', 'reboot', 'echo', 'mkdir', 'mount',
-                         'umount'}
+        self.busybox |= {'fsck', '[', 'reboot', 'mkdir', 'mount', 'umount'}
         self.source = source if source else PathData("none")
         self.mountpoint = mountpoint
         self.filesystem = filesystem
@@ -619,7 +618,7 @@ class MountData(Data):
 
         self._pre_load(out)
         out.writelines((
-            f"echo 'Mounting filesystem {self}'\n",
+            f"info 'Mounting filesystem {self}'\n",
             *fsck,
             *mkdir,
             f"mount -t {quote(self.filesystem)} -o {quote(self.options)} ",
@@ -632,7 +631,7 @@ class MountData(Data):
     def unload(self, out: IO[str]) -> None:
         self._pre_unload(out)
         out.writelines((
-            f"echo 'Unmounting filesystem {self}'\n",
+            f"info 'Unmounting filesystem {self}'\n",
             f"umount {quote(self.mountpoint)} || ",
             _die(f'Failed to unmount filesystem {self}'),
             "\n",
@@ -657,7 +656,6 @@ class MdData(Data):
     def __init__(self, sources: Iterable[Data], name: str):
         super().__init__()
         self.execs.add(('mdadm', None))
-        self.busybox |= {'echo'}
         self.sources = tuple(sources)
         self.name = name
         if not self.sources:
@@ -683,7 +681,7 @@ class MdData(Data):
 
         self._pre_load(out)
         out.writelines((
-            f"echo 'Assembling MD RAID {self}'\n",
+            f"info 'Assembling MD RAID {self}'\n",
             "MDADM_NO_UDEV=1 ",
             "mdadm --assemble ", *sources, f"{quote(self.name)} || ",
             _die(f'Failed to assemble MD RAID {self}'),
@@ -694,7 +692,7 @@ class MdData(Data):
     def unload(self, out: IO[str]) -> None:
         self._pre_unload(out)
         out.writelines((
-            f"echo 'Stopping MD RAID {self}'\n",
+            f"info 'Stopping MD RAID {self}'\n",
             "MDADM_NO_UDEV=1 ",
             f"mdadm --stop {quote(self.name)} || ",
             _die(f'Failed to stop MD RAID {self}'),
@@ -719,7 +717,7 @@ class CloneData(Data):
 
     def __init__(self, source: Data, dest: Data):
         super().__init__()
-        self.busybox |= {'echo', 'cp'}
+        self.busybox |= {'cp'}
         self.source = source
         self.dest = dest
         self.add_load_dep(self.source)
@@ -735,7 +733,7 @@ class CloneData(Data):
     def load(self, out: IO[str]) -> None:
         self._pre_load(out)
         out.writelines((
-            f"echo 'Cloning {self}'\n",
+            f"info 'Cloning {self}'\n",
             f"cp -aT {self.source.path()} {self.dest.path()} || ",
             _die(f'Failed to clone {self}'),
             "\n",

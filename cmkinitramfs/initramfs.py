@@ -169,6 +169,8 @@ class Initramfs:
                            Node.NodeType.CHARACTER, 5, 0))
         self.add_item(Node(0o666, self.user, self.group, '/dev/null',
                            Node.NodeType.CHARACTER, 1, 3))
+        self.add_item(Node(0o644, self.user, self.group, '/dev/kmsg',
+                           Node.NodeType.CHARACTER, 1, 11))
 
         # Add kernel modules information
         for kernel in self.kernels:

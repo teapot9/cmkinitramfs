@@ -60,36 +60,22 @@ class Breakpoint(Enum):
 def _fun_rescue_shell(out: IO[str]) -> None:
     """Define the rescue_shell function
 
-    ``rescue_shell`` takes one argument and drop the user to ``/bin/sh``,
-    the argument is the error to print to the user.
+    ``rescue_shell`` drop the user to ``/bin/sh``.
+
+    Arguments: error message.
 
     This function *should not* be called from a subshell.
+
+    This function *does not* return.
 
     :param out: Stream to write into
     """
     out.writelines((
         "rescue_shell()\n",
         "{\n",
-        "\tprintk \"$1\"\n",
-        "\techo 'Dropping you into a shell'\n",
+        "\temerg \"$@\"\n",
+        "\tnotice 'Dropping into a shell'\n",
         "\texec '/bin/sh'\n",
-        "}\n\n",
-    ))
-
-
-def _fun_printk(out: IO[str]) -> None:
-    """Define the printk function
-
-    ``printk`` takes one argument and prints it to both the kernel log
-    and stderr.
-
-    :param out: Stream to write into
-    """
-    out.writelines((
-        "printk()\n",
-        "{\n",
-        "\techo \"initramfs: $1\" 1>/dev/kmsg\n",
-        "\techo \"$1\" 1>&2\n",
         "}\n\n",
     ))
 
@@ -98,17 +84,20 @@ def _fun_panic(out: IO[str]) -> None:
     """Define the panic function
 
     ``panic`` causes a kernel panic by exiting ``/init``.
-    It takes one argument: the error message.
+
+    Arguments: error message.
 
     This function *should not* be called from a subshell.
+
+    This function *does not* return.
 
     :param out: Stream to write into
     """
     out.writelines((
         "panic()\n",
         "{\n",
-        "\tprintk \"$1\"\n",
-        "\techo 'Terminating init'\n",
+        "\temerg \"$@\"\n",
+        "\tnotice 'Terminating init'\n",
         "\tsync\n",
         "\texit\n",
         "}\n\n",
@@ -120,18 +109,83 @@ def _fun_die(out: IO[str]) -> None:
 
     ``die`` will either start a rescue shell or cause a kernel panic,
     wether ``RD_PANIC`` is set or not.
-    It takes one argument: the error message passed to ``panic``
-    or ``rescue_shell``.
+
+    Arguments: error message passed to ``panic`` or ``rescue_shell``.
 
     This function *should not* be called from a subshell.
+
+    This function *does not* return.
 
     :param out: Stream to write into
     """
     out.writelines((
         "die()\n",
         "{\n",
-        "\t[ -n \"${RD_PANIC+x}\" ] && panic \"$1\" || rescue_shell \"$1\"\n",
+        "\tkill -TERM -1\n",
+        "\t[ -n \"${RD_PANIC+x}\" ] && panic \"$@\" || rescue_shell \"$@\"\n",
         "}\n\n",
+    ))
+
+
+def _fun_log(out: IO[str]) -> None:
+    """Define the logging functions
+
+    ``log``: log a message.
+
+     - Argument 1: syslog level number, from 0 to 7.
+     - Additionnal arguments: message to log.
+
+    Logs printed to stderr:
+
+     - Level ≤ 4: always
+     - 5 ≤ level ≤ 6: if debug enabled or quiet disabled
+     - Level = 7: if debug enabled
+
+    Helper functions:
+
+     - ``emerg``: log a message for a panic condition.
+       The message is prepended by 'FATAL:'.
+     - ``alert``: log a critical error message requiring immediate action.
+       The message is prepended by 'ERROR:'.
+     - ``crit``: log a critical error message.
+       The message is prepended by 'ERROR:'.
+     - ``err``: log an error message.
+       The message is prepended by 'ERROR:'.
+     - ``warn``: log a warning message.
+       The message is prepended by 'WARNING:'.
+     - ``notice``: log a significant/unusual informational message.
+     - ``info``: log an informational message.
+     - ``debug``: log a debug-level message.
+
+    Helper functions will call ``log`` with the coresponding syslog level.
+
+    Logging functions always return successfully.
+
+    :param out: Stream to write into
+    """
+    out.writelines((
+        'log()\n',
+        '{\n',
+        '\t[ "${1-}" -lt 8 ] && lvl="$1" && shift || lvl=1\n',
+        '\t[ $# -ge 1 ] || return 0\n',
+        '\techo "<$((24 | lvl))>initramfs:" "$@" 1>/dev/kmsg\n',
+        '\tif [ "${lvl}" -eq 5 ] || [ "${lvl}" -eq 6 ] ',
+        '&& [ -z "${RD_QUIET+x}" ] || [ -n "${RD_DEBUG+x}" ] ',
+        '|| [ "${lvl}" -le 4 ]\n',
+        '\tthen echo "$@" 1>&2\n',
+        '\tfi\n',
+        '\treturn 0\n',
+        '}\n',
+        '\n',
+        'emerg() { log 0 \'FATAL:\' "$@" ; }\n',
+        'alert() { log 1 \'ERROR:\' "$@" ; }\n',
+        'crit() { log 2 \'ERROR:\' "$@" ; }\n',
+        'err() { log 3 \'ERROR:\' "$@" ; }\n',
+        'warn() { log 4 \'ERROR:\' "$@" ; }\n',
+        'notice() { log 5 "$@" ; }\n',
+        'info() { log 6 "$@" ; }\n',
+        'debug() { log 7 "$@" ; }\n',
+        '\n',
     ))
 
 
@@ -141,7 +195,7 @@ def do_header(out: IO[str], home: str = '/root', path: str = '/bin:/sbin') \
 
      - Create the shebang ``/bin/sh``
      - Configure environment variables
-     - Define ``rescue_shell`` and ``printk``
+     - Define global functions (``panic``, logging, ...)
 
     :param out: Stream to write into
     :param home: ``HOME`` environment variable
@@ -157,13 +211,9 @@ def do_header(out: IO[str], home: str = '/root', path: str = '/bin:/sbin') \
         "\n",
     ))
     _fun_rescue_shell(out)
-    _fun_printk(out)
     _fun_panic(out)
     _fun_die(out)
-    out.writelines((
-        "echo 'INITRAMFS: Start'\n",
-        "\n",
-    ))
+    _fun_log(out)
 
 
 def do_init(out: IO[str]) -> None:
@@ -176,7 +226,7 @@ def do_init(out: IO[str]) -> None:
     :param out: Stream to write into
     """
     out.writelines((
-        "echo 'Initialization'\n",
+        "debug 'Initialization'\n",
         "test $$ -eq 1 || ",
         _die('init expects to be run as PID 1'),
         "mount -t proc none /proc || ",
@@ -202,20 +252,26 @@ def do_cmdline(out: IO[str]) -> None:
 
      - ``init=<path to init>``: Set the program to run as init process
        after the initramfs.
+     - ``debug``: Enable debugging, see ``rd.debug``.
+     - ``quiet``: Enable quiet mode, see ``rd.quiet``.
      - ``rd.break={init|rootfs|mount}``: Stops the boot process,
        defaults to ``rootfs``. See :class:`Breakpoint`.
-     - ``rd.debug``: Enable debugging mode (with ``set -x``).
+     - ``rd.debug``: Enable debugging mode: output verbose informations.
+       If quiet mode is disabled, enable shell trace (with ``set -x``).
      - ``rd.panic``: On fatal error: cause a kernel panic rather than
        dropping into a shell.
+     - ``rd.quiet``: Enable quiet mode: reduce verbosity.
 
     :param out: Stream to write into
     """
     out.writelines((
-        "echo 'Parsing command-line'\n",
+        "debug 'Parsing command-line'\n",
         "for cmdline in $(cat /proc/cmdline); do\n",
         "\tcase \"${cmdline}\" in\n",
         "\t--) break ;;\n",
         "\tinit=*) INIT=\"${cmdline#*=}\" ;;\n"
+        "\tdebug) RD_DEBUG=true ;;\n",
+        "\tquiet) RD_QUIET=true ;;\n",
         "\trd.break) RD_BREAK_ROOTFS=true ;;\n",
         "\trd.break=*)\n",
         "\t\tOLDIFS=\"${IFS}\"\n",
@@ -226,22 +282,22 @@ def do_cmdline(out: IO[str]) -> None:
         "\t\t\tmodule) RD_BREAK_MODULE=true ;;\n",
         "\t\t\trootfs) RD_BREAK_ROOTFS=true ;;\n",
         "\t\t\tmount) RD_BREAK_MOUNT=true ;;\n",
-        "\t\t\t*) printk \"ERROR: Unknown breakpoint ${bpoint}\" ;;\n",
+        "\t\t\t*) err \"Unknown breakpoint ${bpoint}\" ;;\n",
         "\t\t\tesac\n",
         "\t\tdone\n",
         "\t\tIFS=\"${OLDIFS}\"\n",
         "\t\t;;\n",
         "\trd.debug) RD_DEBUG=true ;;\n",
         "\trd.panic) RD_PANIC=true ;;\n",
+        "\trd.quiet) RD_QUIET=true ;;\n",
         "\t*) unknown_cmd=\"${unknown_cmd-}${unknown_cmd+ }${cmdline}\" ;;\n",
         "\tesac\n",
         "done\n",
         "\n",
-        "if [ -n \"${RD_DEBUG+x}\" ]; then\n"
-        "\tPS4='+ $0:$LINENO: '\n",
-        "\tset -x\n",
-        "\tprintk \"DEBUG: Skipped unknown cmdlines: ${unknown_cmd-}\"\n",
-        "fi\n",
+        "[ -n \"${RD_DEBUG+x}\" ] && [ -z \"${RD_QUIET+x}\" ] ",
+        "&& PS4='+ $0:$LINENO: ' && set -x\n",
+        "[ -n \"${unknown_cmd+x}\" ] ",
+        "&& debug \"Skipped unknown cmdlines: ${unknown_cmd}\"\n",
         "unset unknown_cmd\n",
         "\n",
     ))
@@ -255,7 +311,7 @@ def do_keymap(out: IO[str], keymap_file: str, unicode: bool = True) -> None:
     :param unicode: Set the keyboard in unicode mode (rather than ASCII)
     """
     out.writelines((
-        "echo 'Loading keymap'\n",
+        "info 'Loading keymap'\n",
         f"[ -f {quote(keymap_file)} ] || ",
         _die(f'Failed to load keymap, file {keymap_file} not found'),
         f"kbd_mode {'-u' if unicode else '-a'} || ",
@@ -277,7 +333,7 @@ def do_module(out: IO[str], module: str, *args: str) -> None:
     quoted_args = (f'{quote(arg)} ' for arg in args)
 
     out.writelines((
-        f"echo 'Loading kernel module {module}'\n",
+        f"info 'Loading kernel module {module}'\n",
         f"modprobe {quote(module)} ", *quoted_args, '|| ',
         _die(f'Failed to load module {module}'),
         '\n',
@@ -306,7 +362,7 @@ def do_break(out: IO[str], breakpoint_: Breakpoint,
         raise ValueError(f"Unknown breakpoint: {breakpoint_}")
 
     if scripts:
-        out.write(f"echo 'Running user scripts for {breakpoint_}'\n")
+        out.write(f"info 'Running user scripts for {breakpoint_}'\n")
         for script in scripts:
             out.writelines((script, "\n"))
         out.write("\n")
@@ -331,23 +387,21 @@ def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
     """
     out.writelines((
         '[ -z "${INIT+x}" ] && INIT=', quote(init), '\n',
-        'printk "Run ${INIT} as init process"\n',
-        'if [ -n "${RD_DEBUG+x}" ]; then\n',
-        '\tprintk \'  with arguments:\'\n',
-        '\tfor arg in "${INIT}" "$@"; do printk "    ${arg}"; done\n',
-        '\tprintk \'  with environment:\'\n',
-        '\tOLDIFS="${IFS}"\n',
-        '\tIFS="$(printf \'\\n\\b\')"\n',
-        '\tfor var in $(env); do printk "    ${var}"; done\n',
-        '\tIFS="${OLDIFS}"\n',
-        'fi\n',
-
+        'info "Run ${INIT} as init process"\n',
+        'debug \'  with arguments:\'\n',
+        'for arg in "${INIT}" "$@"; do debug "    ${arg}"; done\n',
+        'debug \'  with environment:\'\n',
+        'OLDIFS="${IFS}"\n',
+        'IFS="$(printf \'\\n\\b\')"\n',
+        'for var in $(env); do debug "    ${var}"; done\n',
+        'IFS="${OLDIFS}"\n',
+        '\n',
         'verb="$(cut -d"$(printf \'\\t\')" -f4 -s /proc/sys/kernel/printk)"\n',
         'echo "${verb}" >/proc/sys/kernel/printk\n',
+        'kill -TERM -1\n',
         "umount /dev || umount -l /dev || ", _die('Failed to unmount /dev'),
         "umount /proc || umount -l /proc || ", _die('Failed to unmount /proc'),
         "umount /sys || umount -l /sys || ", _die('Failed to unmount /sys'),
-        "echo 'INITRAMFS: End'\n",
         'exec switch_root ', newroot.path(), ' "${INIT}" "$@" || ',
         _die('Failed to switch root'),
         "\n",
