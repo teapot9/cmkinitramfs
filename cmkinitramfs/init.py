@@ -22,8 +22,9 @@ from .data import _die, Data
 
 #: Global Busybox applet dependencies
 BUSYBOX_COMMON_DEPS = {
-    '[', 'cat', 'cut', 'echo', 'env', 'exec', 'exit', 'export', 'mount',
-    'set', 'switch_root', 'sync', 'test', 'umount', 'uname',
+    '[', 'cat', 'cut', 'echo', 'env', 'exec', 'exit', 'export', 'kill',
+    'mount', 'return', 'set', 'shift', 'switch_root', 'sync', 'test',
+    'umount', 'uname',
 }
 #: Keymap loading Busybox applet dependencies
 BUSYBOX_KEYMAP_DEPS = {'loadkmap', 'kbd_mode'}
