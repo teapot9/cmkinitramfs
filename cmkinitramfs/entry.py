@@ -13,8 +13,7 @@ import shlex
 import shutil
 import sys
 from dataclasses import dataclass
-from typing import (Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple,
-                    overload)
+from typing import Dict, Iterable, List, Mapping, Optional, Tuple, overload
 
 import cmkinitramfs
 import cmkinitramfs.data as datamod
@@ -62,21 +61,21 @@ class Config:
     :param cmkcpiodir_opts: Default options for cmkcpiodir
     :param cmkcpiolist_opts: Default options for cmkcpiolist
     :param modules: Kernel modules to be loaded in the initramfs:
-        ``(module, (arg, ...))``. See :func:`cmkinitramfs.init.mkinit`.
+        ``{module: (arg, ...)}``. See :func:`cmkinitramfs.init.mkinit`.
     :param scripts: User scripts to run at given breakpoints.
         See ``scripts`` for :func:`cmkinitramfs.init.mkinit`.
     """
     root: datamod.Data
-    mounts: Tuple[datamod.Data, ...]
+    mounts: Iterable[datamod.Data]
     keymap: Optional[Tuple[str, str, str]]
-    files: FrozenSet[Tuple[str, Optional[str]]]
-    execs: FrozenSet[Tuple[str, Optional[str]]]
-    libs: FrozenSet[Tuple[str, Optional[str]]]
-    busybox: FrozenSet[str]
+    files: Iterable[Tuple[str, Optional[str]]]
+    execs: Iterable[Tuple[str, Optional[str]]]
+    libs: Iterable[Tuple[str, Optional[str]]]
+    busybox: Iterable[str]
     init_path: str
     cmkcpiodir_opts: str
     cmkcpiolist_opts: str
-    modules: Tuple[Tuple[str, Tuple[str, ...]], ...]
+    modules: Mapping[str, Iterable[str]]
     scripts: Mapping[Breakpoint, Iterable[str]]
 
 
@@ -251,10 +250,10 @@ def read_config(config_file: Optional[str] = None) -> Config:
             config['DEFAULT'].get('keymap-path', '/tmp/keymap.bmap'),
             config['DEFAULT'].get('keymap-dest', '/root/keymap.bmap'),
         ) if config['DEFAULT'].getboolean('keymap', fallback=False) else None,
-        files=frozenset(files),
-        execs=frozenset(execs),
-        libs=frozenset(libs),
-        busybox=frozenset(busybox),
+        files=files,
+        execs=execs,
+        libs=libs,
+        busybox=busybox,
         init_path=config['DEFAULT'].get('init-path', '/tmp/init.sh'),
         cmkcpiodir_opts=config['DEFAULT'].get(
             'cmkcpiodir-default-opts', ''
@@ -262,7 +261,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
         cmkcpiolist_opts=config['DEFAULT'].get(
             'cmkcpiolist-default-opts', ''
         ),
-        modules=tuple((name, tuple(args)) for name, args in modules.items()),
+        modules=modules,
         scripts=scripts,
     )
 
@@ -407,7 +406,7 @@ def _common_parser_cmkcpio() -> argparse.ArgumentParser:
 
 def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
     """Add files to the initramfs from the configuration"""
-    busybox_deps = set() | config.busybox | BUSYBOX_COMMON_DEPS
+    busybox_deps = set(config.busybox) | BUSYBOX_COMMON_DEPS
 
     # Add necessary files
     for src, dest in config.files:
@@ -433,7 +432,7 @@ def _build_initramfs(initramfs: mkramfs.Initramfs, config: Config) -> None:
     # Add module
     if initramfs.kernels:
         busybox_deps |= BUSYBOX_KMOD_DEPS
-        for module, _ in config.modules:
+        for module in config.modules:
             logger.info("Adding kernel module %s", module)
             initramfs.add_kmod(module)
 

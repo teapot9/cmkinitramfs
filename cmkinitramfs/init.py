@@ -15,7 +15,7 @@ import itertools
 import locale
 from enum import Enum, auto
 from shlex import quote
-from typing import Iterable, IO, Mapping, Optional, Tuple
+from typing import Iterable, IO, Mapping, Optional
 
 from .data import _die, Data
 
@@ -414,7 +414,7 @@ def mkinit(
         root: Data,
         mounts: Iterable[Data] = (),
         keymap: Optional[str] = None,
-        modules: Iterable[Tuple[str, Iterable[str]]] = (),
+        modules: Optional[Mapping[str, Iterable[str]]] = None,
         scripts: Optional[Mapping[Breakpoint, Iterable[str]]] = None,
         ) -> None:  # noqa: E123
     """Create the init script
@@ -424,7 +424,7 @@ def mkinit(
     :param mounts: :class:`Data` needed in addition of rootfs
     :param keymap: Path of the keymap to load, :data:`None` means no keymap
     :param modules: Kernel modules to be loaded in the initramfs:
-        ``(module, (arg, ...))``. ``module`` is the module name string,
+        ``{module: (arg, ...)}``. ``module`` is the module name string,
         and ``(arg, ...)``` is the iterable with the module parameters.
     :param scripts: User commands to run. ``{breakpoint: commands}``:
         ``breakpoint`` is the :class:`Breakpoint` where the commands will
@@ -436,6 +436,8 @@ def mkinit(
         datatypes.add(type(data))
         for dep in data.iter_all_deps():
             datatypes.add(type(dep))
+    if modules is None:
+        modules = {}
     if scripts is None:
         scripts = {}
 
@@ -449,7 +451,7 @@ def mkinit(
         do_keymap(out, keymap,
                   unicode=(locale.getdefaultlocale()[1] == 'UTF-8'))
     do_break(out, Breakpoint.INIT, scripts.get(Breakpoint.INIT, ()))
-    for mod_name, mod_args in modules:
+    for mod_name, mod_args in modules.items():
         do_module(out, mod_name, *mod_args)
     do_break(out, Breakpoint.MODULE, scripts.get(Breakpoint.MODULE, ()))
     root.load(out)
