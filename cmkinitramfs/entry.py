@@ -86,6 +86,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
         ``CMKINITCFG`` environment variable, ``./cmkinitramfs.ini``,
         ``/etc/cmkinitramfs.ini``.
     :return: Configuration dictionnary, described by :class:`Config`
+    :raises ValueError: Config file parsing error
     """
 
     @overload
@@ -127,7 +128,8 @@ def read_config(config_file: Optional[str] = None) -> Config:
     if config_file is None:
         config_file = _find_config_file()
     config = configparser.ConfigParser()
-    config.read(config_file)
+    if config.read(config_file) != [config_file]:
+        raise ValueError(f"Cound not read configuration {config_file}")
 
     # Get all data sources in data_dic
     data_dic: Dict[str, datamod.Data] = {}

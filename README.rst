@@ -139,15 +139,15 @@ The configuration file is in an *ini* format.
 
 Each section defines a data source, the section name is the data identifier.
 
-Some options expects a data source as input, there are 4 data identifier
+Some options expects a data source as input, there are several data identifier
 formats:
 
- - ``data-name``: data defined in the section with the same name.
- - ``/absolute/path``: same as ``PATH=/absolute/path``.
- - ``DATA=data-name``: same as ``data-name``.
+ - ``DATA=data-name``: data defined in the section with the same name.
+ - ``data-name``: same as ``DATA=data-name``.
  - ``PATH=/path/foo/bar``: data at the path ``/path/foo/bar``, this can
-   be a directory, or a block device.
- - ``UUID=8490-47b4``: filesystem with UUID ``8490-47b4``.
+   be a directory, a file, or a block device.
+ - ``/absolute/path``: same as ``PATH=/absolute/path``.
+ - ``UUID=1234-5678``: filesystem with UUID ``1234-5678``.
  - ``LABEL=foo``: filesystem with label ``foo``.
  - ``PARTUUID=1234-5678``: partition with UUID ``1234-5678``.
  - ``PARTLABEL=foo``: partition with label ``foo``.
@@ -161,7 +161,7 @@ global configuration.
  - ``root`` (mandatory): Data identifier for the data to use as new root.
 
  - ``mountpoints`` (optional): Comma separated list of data identifier
-   to load in addition of rootfs. Can be empty.
+   to load in addition of rootfs.
 
  - ``keymap`` (optional): Boolean value defining if a keymap should be
    loaded. If set to ``no``, all ``keymap-*`` configurations will be ignored.
@@ -196,10 +196,12 @@ global configuration.
 
  - ``libs`` (optional): Additional libraries to include in the initramfs.
    Same format as ``files``, except that ``source`` will also be searched
-   in directories from ``/etc/ld.so.conf``, ``/etc/ld.so.conf.d/*.conf``,
-   and the ``LD_LIBRARY_PATH`` environment variable.
+   in directories from ``/etc/ld.so.conf`` and the ``LD_LIBRARY_PATH``
+   environment variable.
 
  - ``busybox`` (optional): Additional executables to include in the initramfs.
+   Each item is separated by a newline. Format: ``exec``:
+   name of the command (basename).
    If busybox provides the command, they will not be added. Otherwise,
    the executable is searched in ``PATH``.
 
@@ -219,6 +221,7 @@ global configuration.
    A list of available breakpoints is available in
    :class:`cmkinitramfs.init.Breakpoint`.
    These scripts will be run wether the breakpoint is enabled or not.
+   Example: ``init: ls /dev``: run ``ls /dev`` after initialization.
 
 LUKS data sections
 ------------------
@@ -313,12 +316,12 @@ Clone a source to a destination.
 
 .. |need| replace:: ``need`` (optional): Hard dependencies: comma separated
    list of data identifiers. Those dependencies are required to load
-   *and* use the data. Can be empty.
+   *and* use the data.
 
 .. |load-need| replace:: ``load-need`` (optional): Load dependencies: comma
    separated list of data identifiers. Those dependencies are only required
    to load the data, they can be unloaded when the data has been successfully
-   loaded. (e.g. A LUKS key, an archive to decompress.) Can be empty.
+   loaded. (e.g. A LUKS key, an archive to decompress.)
 
 
 Usage
@@ -327,14 +330,17 @@ Usage
 Kernel command-line parameters
 ------------------------------
 
-The init script will check the Kernel cmdline for known parameters.
+The init script will check the kernel cmdline for known parameters.
 
+ - ``debug``: Same as ``rd.debug``.
  - ``init=<path to init>``: Set the init process to run after the initramfs.
+ - ``quiet``: Same as ``rd.quiet``.
  - ``rd.break=<breakpoint>``: Drop into a shell at a given point.
    See :class:`cmkinitramfs.init.Breakpoint`.
  - ``rd.debug``: Show debugging informations.
- - ``rd.panic``: On fatal error: cause a kernel panic rather than drop
+ - ``rd.panic``: On fatal error: cause a kernel panic rather than droping
    into a shell.
+ - ``rd.quiet``: Reduce log shown on console.
 
 For more details, see :func:`cmkinitramfs.init.do_cmdline`.
 
@@ -355,7 +361,7 @@ cmkinit
 Running ``cmkinit`` will generate an init script and output it to stdout.
 No options are available, everything is defined in the configuration file.
 The ``CMKINITCFG`` environment variable may be defined to use a custom
-configuration path.
+configuration file.
 
 cmkcpiodir
 ----------
@@ -395,7 +401,7 @@ cmkcpiodir
      --build-dir BUILD_DIR, -b BUILD_DIR
                            set the location of the initramfs directory
 
-Running ``cmkcpiodir`` will generate the initramfs to a directory, then
+Running ``cmkcpiodir`` will generate the initramfs in a directory, then
 it will create the CPIO archive from this directory.
 ``cmkcpiodir`` requires root privileges when run in non-debug mode,
 see the ``do_nodes`` options of
@@ -436,9 +442,9 @@ cmkcpiolist
      --cpio-list CPIO_LIST, -l CPIO_LIST
                            set the location of the CPIO list
 
-Running ``cmkcpiolist`` will generate an initramfs CPIO list to a file,
+Running ``cmkcpiolist`` will generate an initramfs CPIO list in a file,
 then it will create the CPIO archive from this list with ``gen_init_cpio``.
-``cmkcpiolist`` does not requires root privileges.
+``cmkcpiolist`` does not require root privileges.
 
 findlib
 -------
@@ -485,8 +491,7 @@ Command-line interface
 
 ..
 
- - Creates init script in ``/tmp/init.sh`` (set the path in the config file
-   with ``init-path``).
+ - Creates init script in ``/tmp/init.sh``.
  - If enabled, builds binary keymap in ``/tmp/keymap.bmap``.
  - Builds initramfs in ``/tmp/initramfs`` (disable this step with
    ``--only-build-archive``).
@@ -500,8 +505,7 @@ Command-line interface
 
 ..
 
- - Creates init script in ``/tmp/init.sh`` (set the path in the config file
-   with ``init-path``).
+ - Creates init script in ``/tmp/init.sh``.
  - If enabled, builds binary keymap in ``/tmp/keymap.bmap``.
  - Builds CPIO list in ``/tmp/initramfs.list`` (disable this step with
    ``--only-build-archive``).
