@@ -97,9 +97,7 @@ def parse_ld_so_conf_iter(conf_path: Optional[str] = None, root: str = '/') \
                 if line[0] != '/':
                     line = os.path.dirname(conf_path) + '/' + line
                 for path in sorted(glob.glob(line)):
-                    yield from parse_ld_so_conf_iter(
-                        normpath(root + path), root
-                    )
+                    yield from parse_ld_so_conf_iter(normpath(path), root)
             else:
                 yield normpath(root + line)
 
