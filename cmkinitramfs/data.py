@@ -17,20 +17,6 @@ from shlex import quote
 from typing import Iterable, Iterator, IO, List, Optional, Set, Tuple
 
 
-def _die(message: str, newline: bool = True) -> str:
-    """Stop the boot process with an error
-
-    This is a helper calling ``die``.
-
-    :param message: Error message to print
-    :param newline: Include a newline at the end of the function call
-    :return: String stopping the boot proces, the error message will be
-        single quoted and escaped
-    """
-    end = '\n' if newline else ''
-    return f'die {quote(message)}{end}'
-
-
 class Data:
     """Base class representing any data on the system
 
@@ -423,8 +409,8 @@ class LuksData(Data):
         out.writelines((
             f"info 'Unlocking LUKS device {self}'\n",
             "cryptsetup ", header, key_file, discard,
-            f"open {self.source.path()} {quote(self.name)} || ",
-            _die(f'Failed to unlock LUKS device {self}'),
+            f"open {self.source.path()} {quote(self.name)} || die ",
+            quote(f'Failed to unlock LUKS device {self}'), '\n',
             "\n",
         ))
         self._post_load(out)
@@ -433,8 +419,8 @@ class LuksData(Data):
         self._pre_unload(out)
         out.writelines((
             f"info 'Closing LUKS device {self}'\n",
-            f"cryptsetup close {quote(self.name)} || ",
-            _die(f'Failed to close LUKS device {self}'),
+            f"cryptsetup close {quote(self.name)} || die ",
+            quote(f'Failed to close LUKS device {self}'), '\n',
             "\n",
         ))
         self._post_unload(out)
@@ -470,10 +456,10 @@ class LvmData(Data):
         out.writelines((
             f"info 'Enabling LVM logical volume {self}'\n",
             "lvm lvchange --sysinit -a ly ",
-            f"{quote(f'{self.vg_name}/{self.lv_name}')} || ",
-            _die(f'Failed to enable LVM logical volume {self}'),
-            "lvm vgscan --mknodes || ",
-            _die(f'Failed to create LVM nodes for {self}'),
+            f"{quote(f'{self.vg_name}/{self.lv_name}')} || die ",
+            quote(f'Failed to enable LVM logical volume {self}'), '\n',
+            "lvm vgscan --mknodes || die ",
+            quote(f'Failed to create LVM nodes for {self}'), '\n',
             "\n",
         ))
         self._post_load(out)
@@ -483,10 +469,10 @@ class LvmData(Data):
         out.writelines((
             f"info 'Disabling LVM logical volume {self}'\n",
             "lvm lvchange --sysinit -a ln ",
-            f"{quote(f'{self.vg_name}/{self.lv_name}')} || ",
-            _die(f'Failed to disable LVM logical volume {self}'),
-            "lvm vgscan --mknodes || ",
-            _die(f'Failed to remove LVM nodes for {self}'),
+            f"{quote(f'{self.vg_name}/{self.lv_name}')} || die ",
+            quote(f'Failed to disable LVM logical volume {self}'), '\n',
+            "lvm vgscan --mknodes || die ",
+            quote(f'Failed to remove LVM nodes for {self}'), '\n',
             "\n",
         ))
         self._post_unload(out)
@@ -607,13 +593,14 @@ class MountData(Data):
 
     def load(self, out: IO[str]) -> None:
         fsck = (
-            f'mount_fsck -t {quote(self.filesystem)} {self.source.path()} || ',
-            _die(f'Failed to check filesystem {self}'),
+            f'mount_fsck -t {quote(self.filesystem)} ',
+            f'{self.source.path()} || die ',
+            quote(f'Failed to check filesystem {self}'), '\n',
         ) if self.source.path() != 'none' else ()
         mkdir = (
             f"[ -d {quote(self.mountpoint)} ] || ",
-            f"mkdir {quote(self.mountpoint)} || ",
-            _die(f'Failed to create directory {self}'),
+            f"mkdir {quote(self.mountpoint)} || die ",
+            quote(f'Failed to create directory {self}'), '\n',
         ) if os.path.dirname(self.mountpoint) == '/mnt' else ()
 
         self._pre_load(out)
@@ -622,8 +609,8 @@ class MountData(Data):
             *fsck,
             *mkdir,
             f"mount -t {quote(self.filesystem)} -o {quote(self.options)} ",
-            f"{self.source.path()} {quote(self.mountpoint)} || ",
-            _die(f'Failed to mount filesystem {self}'),
+            f"{self.source.path()} {quote(self.mountpoint)} || die ",
+            quote(f'Failed to mount filesystem {self}'), '\n',
             "\n",
         ))
         self._post_load(out)
@@ -632,8 +619,8 @@ class MountData(Data):
         self._pre_unload(out)
         out.writelines((
             f"info 'Unmounting filesystem {self}'\n",
-            f"umount {quote(self.mountpoint)} || ",
-            _die(f'Failed to unmount filesystem {self}'),
+            f"umount {quote(self.mountpoint)} || die ",
+            quote(f'Failed to unmount filesystem {self}'), '\n',
             "\n",
         ))
         self._post_unload(out)
@@ -683,8 +670,8 @@ class MdData(Data):
         out.writelines((
             f"info 'Assembling MD RAID {self}'\n",
             "MDADM_NO_UDEV=1 ",
-            "mdadm --assemble ", *sources, f"{quote(self.name)} || ",
-            _die(f'Failed to assemble MD RAID {self}'),
+            "mdadm --assemble ", *sources, f"{quote(self.name)} || die ",
+            quote(f'Failed to assemble MD RAID {self}'), '\n',
             "\n",
         ))
         self._post_load(out)
@@ -694,8 +681,8 @@ class MdData(Data):
         out.writelines((
             f"info 'Stopping MD RAID {self}'\n",
             "MDADM_NO_UDEV=1 ",
-            f"mdadm --stop {quote(self.name)} || ",
-            _die(f'Failed to stop MD RAID {self}'),
+            f"mdadm --stop {quote(self.name)} || die ",
+            quote(f'Failed to stop MD RAID {self}'), '\n',
             "\n",
         ))
         self._post_unload(out)
@@ -734,8 +721,8 @@ class CloneData(Data):
         self._pre_load(out)
         out.writelines((
             f"info 'Cloning {self}'\n",
-            f"cp -aT {self.source.path()} {self.dest.path()} || ",
-            _die(f'Failed to clone {self}'),
+            f"cp -aT {self.source.path()} {self.dest.path()} || die ",
+            quote(f'Failed to clone {self}'), '\n',
             "\n",
         ))
         self._post_load(out)

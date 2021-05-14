@@ -5,8 +5,6 @@ data
 .. automodule:: cmkinitramfs.data
    :platform: Linux
 
-.. autofunction:: _die
-
 .. autoclass:: Data
    :members: initialize, iter_all_deps,
       is_final, set_final, add_dep, add_load_dep,

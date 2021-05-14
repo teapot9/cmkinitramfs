@@ -32,7 +32,7 @@ from enum import Enum, auto
 from shlex import quote
 from typing import Iterable, IO, Mapping, Optional
 
-from .data import _die, Data
+from .data import Data
 
 
 #: Global Busybox applet dependencies
@@ -249,14 +249,10 @@ def do_init(out: IO[str]) -> None:
     """
     out.writelines((
         "debug 'Initialization'\n",
-        "test $$ -eq 1 || ",
-        _die('init expects to be run as PID 1'),
-        "mount -t proc none /proc || ",
-        _die('Failed to mount /proc'),
-        "mount -t sysfs none /sys || ",
-        _die('Failed to mount /sys'),
-        "mount -t devtmpfs none /dev || ",
-        _die('Failed to mount /dev'),
+        "test $$ -eq 1 || die 'init expects to be run as PID 1'\n",
+        "mount -t proc none /proc || die 'Failed to mount /proc'\n",
+        "mount -t sysfs none /sys || die 'Failed to mount /sys'\n",
+        "mount -t devtmpfs none /dev || die 'Failed to mount /dev'\n",
         'PRINTK="$(cut -d', TAB, ' -f1 -s /proc/sys/kernel/printk)"\n',
         "echo 4 1>/proc/sys/kernel/printk || ",
         'err \'Failed to set kernel log level to 4\'\n'
@@ -360,8 +356,8 @@ def do_module(out: IO[str], module: str, *args: str) -> None:
 
     out.writelines((
         f"info 'Loading kernel module {module}'\n",
-        f"modprobe {quote(module)} ", *quoted_args, '|| ',
-        _die(f'Failed to load module {module}'),
+        f"modprobe {quote(module)} ", *quoted_args, '|| die ',
+        quote(f'Failed to load module {module}'), '\n',
         '\n',
     ))
 
@@ -429,13 +425,13 @@ def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
         'echo "${PRINTK}" 1>/proc/sys/kernel/printk || ',
         'err "Failed to restore kernel log level to ${PRINTK}"\n',
         'exec 0<>/dev/console 1<>/dev/console 2<>/dev/console || ',
-        'kill -TERM -1 || err \'Failed to kill all processes\'\n',
         'err \'Failed to restore input/output to console\'\n',
-        "umount /dev || umount -l /dev || ", _die('Failed to unmount /dev'),
-        "umount /proc || umount -l /proc || ", _die('Failed to unmount /proc'),
-        "umount /sys || umount -l /sys || ", _die('Failed to unmount /sys'),
+        'kill -TERM -1 || err \'Failed to kill all processes\'\n',
+        "umount /dev || umount -l /dev || die 'Failed to unmount /dev'\n",
+        "umount /proc || umount -l /proc || die 'Failed to unmount /proc'\n",
+        "umount /sys || umount -l /sys || die 'Failed to unmount /sys'\n",
         'exec switch_root ', newroot.path(), ' "${INIT}" "$@"\n',
-        _die('Failed to switch root'),
+        "die 'Failed to switch root'\n",
         "\n",
     ))
 

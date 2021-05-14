@@ -286,6 +286,7 @@ def entry_cmkinit() -> None:
         mounts=config.mounts,
         keymap=(None if config.keymap is None else config.keymap[2]),
         modules=config.modules,
+        scripts=config.scripts,
     )
 
 
