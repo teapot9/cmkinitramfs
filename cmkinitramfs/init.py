@@ -7,6 +7,21 @@ stream. This stream should be the init script.
 
 ``_fun_foo()`` functions write a string defining the foo function into a
 stream. This stream should be the init script.
+
+Init environment variables:
+
+ - ``HOME``
+ - ``PATH``
+
+Init global variables:
+
+ - ``PRINTK``: Initial kernel log level.
+ - ``INIT``: Program to run as init process after the initramfs.
+ - ``RD_XXX``: If set, feature *XXX* is enabled.
+ - ``RD_BREAK_XXX``: If set, breakpoint *XXX* is enabled.
+
+The init script should never rely on global variables being set or unset,
+it should always assign a default value if not set.
 """
 
 from __future__ import annotations
@@ -30,6 +45,11 @@ BUSYBOX_COMMON_DEPS = {
 BUSYBOX_KEYMAP_DEPS = {'loadkmap', 'kbd_mode'}
 #: Kernel module loading Busybox applet dependencies
 BUSYBOX_KMOD_DEPS = {'depmod', 'modprobe'}
+
+#: Get a quoted TAB character
+TAB = '"$(printf \'\\t\')"'
+#: Get a quoted EOL character
+EOL = '"$(printf \'\\n\\b\')"'
 
 
 class Breakpoint(Enum):
@@ -63,7 +83,7 @@ def _fun_rescue_shell(out: IO[str]) -> None:
 
     ``rescue_shell`` drop the user to ``/bin/sh``.
 
-    Arguments: error message.
+    Arguments: none.
 
     This function *should not* be called from a subshell.
 
@@ -74,9 +94,10 @@ def _fun_rescue_shell(out: IO[str]) -> None:
     out.writelines((
         "rescue_shell()\n",
         "{\n",
-        "\temerg \"$@\"\n",
-        "\tnotice 'Dropping into a shell'\n",
-        "\texec '/bin/sh'\n",
+        "\tlog 0 'Dropping into a shell'\n",
+        "\texec /bin/sh 0<>/dev/console 1<>/dev/console 2<>/dev/console\n",
+        "\temerg 'Failed to start rescue shell'\n",
+        "\tpanic\n"
         "}\n\n",
     ))
 
@@ -86,7 +107,7 @@ def _fun_panic(out: IO[str]) -> None:
 
     ``panic`` causes a kernel panic by exiting ``/init``.
 
-    Arguments: error message.
+    Arguments: none.
 
     This function *should not* be called from a subshell.
 
@@ -97,8 +118,7 @@ def _fun_panic(out: IO[str]) -> None:
     out.writelines((
         "panic()\n",
         "{\n",
-        "\temerg \"$@\"\n",
-        "\tnotice 'Terminating init'\n",
+        "\tlog 0 'Terminating init'\n",
         "\tsync\n",
         "\texit\n",
         "}\n\n",
@@ -111,7 +131,7 @@ def _fun_die(out: IO[str]) -> None:
     ``die`` will either start a rescue shell or cause a kernel panic,
     wether ``RD_PANIC`` is set or not.
 
-    Arguments: error message passed to ``panic`` or ``rescue_shell``.
+    Arguments: error message.
 
     This function *should not* be called from a subshell.
 
@@ -122,8 +142,9 @@ def _fun_die(out: IO[str]) -> None:
     out.writelines((
         "die()\n",
         "{\n",
-        "\tkill -TERM -1\n",
-        "\t[ -n \"${RD_PANIC+x}\" ] && panic \"$@\" || rescue_shell \"$@\"\n",
+        "\temerg \"$@\"\n",
+        "\tkill -TERM -1 || err \'Failed to kill all processes\'\n",
+        "\t[ -n \"${RD_PANIC+x}\" ] && panic || rescue_shell\n",
         "}\n\n",
     ))
 
@@ -222,7 +243,7 @@ def do_init(out: IO[str]) -> None:
 
      - Check the current PID is 1
      - Mount ``/proc``, ``/sys``, ``/dev``
-     - Set the kernel log level to 3
+     - Set the kernel log level to 4 (``KERN_ERR`` and higher priority)
 
     :param out: Stream to write into
     """
@@ -236,9 +257,11 @@ def do_init(out: IO[str]) -> None:
         _die('Failed to mount /sys'),
         "mount -t devtmpfs none /dev || ",
         _die('Failed to mount /dev'),
-        "echo 3 1>'/proc/sys/kernel/printk'\n",
+        'PRINTK="$(cut -d', TAB, ' -f1 -s /proc/sys/kernel/printk)"\n',
+        "echo 4 1>/proc/sys/kernel/printk || ",
+        'err \'Failed to set kernel log level to 4\'\n'
         '[ ! -d "/lib/modules/$(uname -r)" ] || depmod || ',
-        _die('Failed to generate modules.dep'),
+        'warn \'Failed to generate modules.dep\'\n',
         "\n",
     ))
 
@@ -275,18 +298,18 @@ def do_cmdline(out: IO[str]) -> None:
         "\tquiet) RD_QUIET=true ;;\n",
         "\trd.break) RD_BREAK_ROOTFS=true ;;\n",
         "\trd.break=*)\n",
-        "\t\tOLDIFS=\"${IFS}\"\n",
+        "\t\told_ifs=\"${IFS}\"\n",
         "\t\tIFS=','\n",
         "\t\tfor bpoint in ${cmdline#*=}; do\n",
         "\t\t\tcase \"${bpoint}\" in\n",
         "\t\t\tinit) RD_BREAK_INIT=true ;;\n",
-        "\t\t\tmodule) RD_BREAK_MODULE=true ;;\n",
+        "\t\t\tmodule|modules) RD_BREAK_MODULE=true ;;\n",
         "\t\t\trootfs) RD_BREAK_ROOTFS=true ;;\n",
-        "\t\t\tmount) RD_BREAK_MOUNT=true ;;\n",
+        "\t\t\tmount|mounts) RD_BREAK_MOUNT=true ;;\n",
         "\t\t\t*) err \"Unknown breakpoint ${bpoint}\" ;;\n",
         "\t\t\tesac\n",
         "\t\tdone\n",
-        "\t\tIFS=\"${OLDIFS}\"\n",
+        "\t\tIFS=\"${old_ifs}\"\n",
         "\t\t;;\n",
         "\trd.debug) RD_DEBUG=true ;;\n",
         "\trd.panic) RD_PANIC=true ;;\n",
@@ -300,6 +323,8 @@ def do_cmdline(out: IO[str]) -> None:
         "[ -n \"${unknown_cmd+x}\" ] ",
         "&& debug \"Skipped unknown cmdlines: ${unknown_cmd}\"\n",
         "unset unknown_cmd\n",
+        "[ -z \"${RD_QUIET+x}\" ] || exec 1<>/dev/null || ",
+        "err 'Failed to redirect stdout to /dev/null'\n",
         "\n",
     ))
 
@@ -311,15 +336,15 @@ def do_keymap(out: IO[str], keymap_file: str, unicode: bool = True) -> None:
     :param keymap_file: Absolute path of the file to load
     :param unicode: Set the keyboard in unicode mode (rather than ASCII)
     """
+    mode = 'unicode' if unicode else 'ASCII'
     out.writelines((
         "info 'Loading keymap'\n",
-        f"[ -f {quote(keymap_file)} ] || ",
-        _die(f'Failed to load keymap, file {keymap_file} not found'),
-        f"kbd_mode {'-u' if unicode else '-a'} || ",
-        _die('Failed to set keyboard mode to '
-             f"{'unicode' if unicode else 'ASCII'}"),
-        f"loadkmap <{quote(keymap_file)} || ",
-        _die(f'Failed to load keymap {keymap_file}'),
+        f"[ -f {quote(keymap_file)} ] || err ",
+        quote(f'Keymap file {keymap_file} not found'), '\n',
+        f"kbd_mode {'-u' if unicode else '-a'} || crit ",
+        quote(f'Failed to set keyboard mode to {mode}'), '\n',
+        f"loadkmap <{quote(keymap_file)} || crit ",
+        quote(f'Failed to load keymap {keymap_file}'), '\n',
         "\n",
     ))
 
@@ -368,9 +393,9 @@ def do_break(out: IO[str], breakpoint_: Breakpoint,
             out.writelines((script, "\n"))
         out.write("\n")
     out.writelines((
-        "[ -n \"${", breakname, "+x}\" ] && rescue_shell ",
-        quote(f"Reached {breakpoint_}"),
-        "\n\n",
+        "[ -n \"${", breakname, "+x}\" ] && notice ",
+        quote(f"Reached {breakpoint_}"), " && rescue_shell\n"
+        "\n",
     ))
 
 
@@ -378,7 +403,9 @@ def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
         -> None:
     """Cleanup and switch root
 
-      - Set kernel log level back to boot-time default
+      - Print debugging information
+      - Restore kernel log level (set to boot-time default if not possible)
+      - Kill all processes
       - Unmount ``/dev``, ``/sys``, ``/proc``
       - Switch root
 
@@ -392,18 +419,22 @@ def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
         'debug \'  with arguments:\'\n',
         'for arg in "${INIT}" "$@"; do debug "    ${arg}"; done\n',
         'debug \'  with environment:\'\n',
-        'OLDIFS="${IFS}"\n',
-        'IFS="$(printf \'\\n\\b\')"\n',
+        'old_ifs="${IFS}"\n',
+        'IFS=', EOL, '\n',
         'for var in $(env); do debug "    ${var}"; done\n',
-        'IFS="${OLDIFS}"\n',
+        'IFS="${old_ifs}"\n',
         '\n',
-        'verb="$(cut -d"$(printf \'\\t\')" -f4 -s /proc/sys/kernel/printk)"\n',
-        'echo "${verb}" >/proc/sys/kernel/printk\n',
-        'kill -TERM -1\n',
+        '[ -z "${PRINTK+x}" ] && PRINTK=',
+        '"$(cut -d', TAB, ' -f4 -s /proc/sys/kernel/printk)"\n',
+        'echo "${PRINTK}" 1>/proc/sys/kernel/printk || ',
+        'err "Failed to restore kernel log level to ${PRINTK}"\n',
+        'exec 0<>/dev/console 1<>/dev/console 2<>/dev/console || ',
+        'kill -TERM -1 || err \'Failed to kill all processes\'\n',
+        'err \'Failed to restore input/output to console\'\n',
         "umount /dev || umount -l /dev || ", _die('Failed to unmount /dev'),
         "umount /proc || umount -l /proc || ", _die('Failed to unmount /proc'),
         "umount /sys || umount -l /sys || ", _die('Failed to unmount /sys'),
-        'exec switch_root ', newroot.path(), ' "${INIT}" "$@" || ',
+        'exec switch_root ', newroot.path(), ' "${INIT}" "$@"\n',
         _die('Failed to switch root'),
         "\n",
     ))
