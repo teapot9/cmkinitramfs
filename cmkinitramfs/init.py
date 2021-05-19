@@ -321,7 +321,7 @@ def do_cmdline(out: IO[str]) -> None:
         "[ -n \"${unknown_cmd+x}\" ] ",
         "&& debug \"Skipped unknown cmdlines: ${unknown_cmd}\"\n",
         "unset unknown_cmd\n",
-        "[ -z \"${RD_QUIET+x}\" ] || exec 1<>/dev/null || ",
+        "[ -n \"${RD_DEBUG+x}\" ] || exec 1<>/dev/null || ",
         "err 'Failed to redirect stdout to /dev/null'\n",
         "\n",
     ))
