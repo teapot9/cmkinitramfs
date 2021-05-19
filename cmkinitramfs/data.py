@@ -4,6 +4,7 @@ The :class:`Data` class defines an abstract object containing data,
 it has multiple subclasses for multiple types of data.
 The main methods of those classes are :meth:`Data.load`, :meth:`Data.unload`,
 and :meth:`Data.set_final`.
+
 Most functions will write into a stream (:term:`text file`) the content
 of the init script.
 Use a :class:`io.StringIO` if you need to use strings rather than a stream.

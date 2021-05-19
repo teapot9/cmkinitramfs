@@ -8,6 +8,15 @@ stream. This stream should be the init script.
 ``_fun_foo()`` functions write a string defining the foo function into a
 stream. This stream should be the init script.
 
+Helper functions available in the init script that can be used by
+:class:`cmkinitramfs.data.Data` classes:
+
+ - :func:`_fun_die`: Fatal error handler (does not return).
+ - :func:`_fun_log`: Logging functions (always successful).
+
+Special helper function available in the init script:
+:func:`_fun_rescue_shell`, :func:`_fun_panic`.
+
 Init environment variables:
 
  - ``HOME``
