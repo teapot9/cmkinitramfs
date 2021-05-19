@@ -69,12 +69,14 @@ class Breakpoint(Enum):
     INIT = auto()
     #: ``module``: Break after loading kernel modules.
     #: Can also be set with the ``RD_BREAK_MODULE`` environment variable.
+    #: Alias: ``modules``.
     MODULE = auto()
     #: ``rootfs``: Break after mounting the root filesystem.
     #: Can also be set with the ``RD_BREAK_ROOTFS`` environment variable.
     ROOTFS = auto()
     #: ``mount``: Break after mounting all filesystems.
     #: Can also be set with the ``RD_BREAK_MOUNT`` environment variable.
+    #: Alias: ``mounts``.
     MOUNT = auto()
 
 
@@ -471,12 +473,12 @@ def mkinit(
     do_header(out)
     do_break(out, Breakpoint.EARLY, scripts.get(Breakpoint.EARLY, ()))
     do_init(out)
-    for datatype in datatypes:
-        datatype.initialize(out)
     do_cmdline(out)
     if keymap is not None:
         do_keymap(out, keymap,
                   unicode=(locale.getdefaultlocale()[1] == 'UTF-8'))
+    for datatype in datatypes:
+        datatype.initialize(out)
     do_break(out, Breakpoint.INIT, scripts.get(Breakpoint.INIT, ()))
     for mod_name, mod_args in modules.items():
         do_module(out, mod_name, *mod_args)
