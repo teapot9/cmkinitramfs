@@ -439,6 +439,42 @@ class LvmData(Data):
     vg_name: str
     lv_name: str
 
+    @staticmethod
+    def __lvm_conf(out: IO[str]) -> None:
+        """Create LVM config in ``/etc/lvm/lvmlocal.conf``
+
+        This override some configurations specific to the
+        initramfs environment.
+
+        Note: if ``/etc/lvm/lvmlocal.conf`` exists, we append to it,
+        which may cause duplicate configuration warnings from LVM.
+        """
+        out.writelines((
+            "debug 'Writing LVM configuration'\n",
+            "mkdir -p /etc/lvm && touch /etc/lvm/lvmlocal.conf || warn ",
+            "'Failed to create LVM configuration file'\n",
+            "{\n",
+            "\techo 'activation/monitoring = 0'\n",
+            "\techo 'activation/udev_rules = 0'\n",
+            "\techo 'activation/udev_sync = 0'\n",
+            "\techo 'devices/external_device_info_source = \"none\"'\n",
+            "\techo 'devices/md_component_detection = 0'\n",
+            "\techo 'devices/multipath_component_detection = 0'\n",
+            "\techo 'devices/obtain_device_list_from_udev = 0'\n",
+            "\techo 'global/locking_type = 4'\n",
+            "\techo 'global/use_lvmetad = 0'\n",
+            "\techo 'global/use_lvmlockd = 0'\n",
+            "\techo 'global/use_lvmpolld = 0'\n",
+            "} >>/etc/lvm/lvmlocal.conf || warn ",
+            "'Failed to write LVM configuration file'\n"
+            "\n",
+        ))
+
+    @classmethod
+    def initialize(cls, out: IO[str]) -> None:
+        super().initialize(out)
+        LvmData.__lvm_conf(out)
+
     def __init__(self, vg_name: str, lv_name: str):
         super().__init__()
         self.execs.add(('lvm', None))
@@ -459,7 +495,7 @@ class LvmData(Data):
             "lvm lvchange --sysinit -a ly ",
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || die ",
             quote(f'Failed to enable LVM logical volume {self}'), '\n',
-            "lvm vgscan --mknodes || die ",
+            "lvm vgmknodes || die ",
             quote(f'Failed to create LVM nodes for {self}'), '\n',
             "\n",
         ))
@@ -472,7 +508,7 @@ class LvmData(Data):
             "lvm lvchange --sysinit -a ln ",
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || die ",
             quote(f'Failed to disable LVM logical volume {self}'), '\n',
-            "lvm vgscan --mknodes || die ",
+            "lvm vgmknodes || die ",
             quote(f'Failed to remove LVM nodes for {self}'), '\n',
             "\n",
         ))

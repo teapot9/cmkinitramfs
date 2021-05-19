@@ -26,6 +26,7 @@ data
    :show-inheritance:
 
 .. autoclass:: LvmData
+   :private-members: __lvm_conf
    :show-inheritance:
 
 .. autoclass:: MountData
