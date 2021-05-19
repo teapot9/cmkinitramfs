@@ -367,7 +367,7 @@ def do_module(out: IO[str], module: str, *args: str) -> None:
 
     out.writelines((
         f"info 'Loading kernel module {module}'\n",
-        f"modprobe {quote(module)} ", *quoted_args, '|| die ',
+        f"modprobe {quote(module)} ", *quoted_args, '|| crit ',
         quote(f'Failed to load module {module}'), '\n',
         '\n',
     ))
@@ -438,9 +438,9 @@ def do_switch_root(out: IO[str], newroot: Data, init: str = '/sbin/init') \
         'exec 0<>/dev/console 1<>/dev/console 2<>/dev/console || ',
         'err \'Failed to restore input/output to console\'\n',
         'kill -TERM -1 || err \'Failed to kill all processes\'\n',
-        "umount -l /dev || die 'Failed to unmount /dev'\n",
-        "umount -l /proc || die 'Failed to unmount /proc'\n",
-        "umount -l /sys || die 'Failed to unmount /sys'\n",
+        "umount -l /dev || err 'Failed to unmount /dev'\n",
+        "umount -l /proc || err 'Failed to unmount /proc'\n",
+        "umount -l /sys || err 'Failed to unmount /sys'\n",
         'exec switch_root ', newroot.path(), ' "${INIT}" "$@"\n',
         "die 'Failed to switch root'\n",
         "\n",

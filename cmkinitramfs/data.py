@@ -495,7 +495,7 @@ class LvmData(Data):
             "lvm lvchange --sysinit -a ly ",
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || die ",
             quote(f'Failed to enable LVM logical volume {self}'), '\n',
-            "lvm vgmknodes || die ",
+            "lvm vgmknodes || err ",
             quote(f'Failed to create LVM nodes for {self}'), '\n',
             "\n",
         ))
@@ -508,7 +508,7 @@ class LvmData(Data):
             "lvm lvchange --sysinit -a ln ",
             f"{quote(f'{self.vg_name}/{self.lv_name}')} || die ",
             quote(f'Failed to disable LVM logical volume {self}'), '\n',
-            "lvm vgmknodes || die ",
+            "lvm vgmknodes || err ",
             quote(f'Failed to remove LVM nodes for {self}'), '\n',
             "\n",
         ))
@@ -636,7 +636,7 @@ class MountData(Data):
         ) if self.source.path() != 'none' else ()
         mkdir = (
             f"[ -d {quote(self.mountpoint)} ] || ",
-            f"mkdir {quote(self.mountpoint)} || die ",
+            f"mkdir {quote(self.mountpoint)} || err ",
             quote(f'Failed to create directory {self}'), '\n',
         ) if os.path.dirname(self.mountpoint) == '/mnt' else ()
 
