@@ -1,5 +1,13 @@
 .. include:: ../../README.rst
 
+Configuration
+-------------
+
+.. literalinclude:: ../../config/cmkinitramfs.ini.example
+   :language: ini
+   :linenos:
+
+
 Table of contents
 =================
 

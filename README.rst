@@ -179,7 +179,7 @@ global configuration.
    Defaults to ``/root/keymap.bmap``.
 
  - ``init-path`` (optional): Path where the init script will be generated
-   (generated from :func:`cmkinitramfs.init.mkinit`).
+   (generated from ``cmkinitramfs.init.mkinit()``).
    Defaults to ``/tmp/init.sh``.
 
  - ``files`` (optional): Additional files to include in the initramfs.
@@ -219,7 +219,7 @@ global configuration.
    One user script per line with the format ``breakpoint:script``.
    The script ``script`` will be run at the breakpoint ``breakpoint``.
    A list of available breakpoints is available in
-   :class:`cmkinitramfs.init.Breakpoint`.
+   ``cmkinitramfs.init.Breakpoint``.
    These scripts will be run wether the breakpoint is enabled or not.
    Example: ``init: ls /dev``: run ``ls /dev`` after initialization.
 
@@ -336,13 +336,13 @@ The init script will check the kernel cmdline for known parameters.
  - ``init=<path to init>``: Set the init process to run after the initramfs.
  - ``quiet``: Same as ``rd.quiet``.
  - ``rd.break=<breakpoint>``: Drop into a shell at a given point.
-   See :class:`cmkinitramfs.init.Breakpoint`.
+   See ``cmkinitramfs.init.Breakpoint``.
  - ``rd.debug``: Show debugging informations.
  - ``rd.panic``: On fatal error: cause a kernel panic rather than droping
    into a shell.
  - ``rd.quiet``: Reduce log shown on console.
 
-For more details, see :func:`cmkinitramfs.init.do_cmdline`.
+For more details, see ``cmkinitramfs.init.do_cmdline``.
 
 cmkinit
 -------
@@ -405,7 +405,7 @@ Running ``cmkcpiodir`` will generate the initramfs in a directory, then
 it will create the CPIO archive from this directory.
 ``cmkcpiodir`` requires root privileges when run in non-debug mode,
 see the ``do_nodes`` options of
-:meth:`cmkinitramfs.initramfs.Initramfs.build_to_directory`.
+``cmkinitramfs.initramfs.Initramfs.build_to_directory()``.
 
 cmkcpiolist
 -----------
@@ -475,8 +475,8 @@ findlib
 
 ``findlib`` will search the absolute path of a library on the system.
 It will search in directories from ``/etc/ld.so.conf``, ``LD_LIBRARY_PATH``,
-and default library paths (see :func:`cmkinitramfs.bin.find_lib` and
-:func:`cmkinitramfs.bin.find_lib_iter`).
+and default library paths (see ``cmkinitramfs.bin.find_lib()`` and
+``cmkinitramfs.bin.find_lib_iter()``).
 
 
 Examples
@@ -534,12 +534,4 @@ Command-line interface
 
  - Search any library matching ``libgcc_s.*`` on the system and prints them
    to stdout.
-
-
-Configuration
--------------
-
-.. literalinclude:: ../../config/cmkinitramfs.ini.example
-   :language: ini
-   :linenos:
 
