@@ -12,8 +12,11 @@ import os.path
 import shlex
 import shutil
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Optional, Tuple, overload
+from typing import (
+    DefaultDict, Dict, Iterable, List, Mapping, Optional, Tuple, overload
+)
 
 import cmkinitramfs
 import cmkinitramfs.data as datamod
@@ -161,6 +164,19 @@ def read_config(config_file: Optional[str] = None) -> Config:
                  for k in data_config['source'].strip().split('\n')],
                 data_config['name'],
             )
+        elif data_config['type'] == 'zfspool':
+            data_dic[data_id] = datamod.ZFSPoolData(
+                data_config['pool'],
+                find_data(data_config.get('cache')),
+            )
+        elif data_config['type'] == 'zfscrypt':
+            data_dic[data_id] = datamod.ZFSCryptData(
+                find_data(data_config.get(
+                    'pool', data_config['dataset'].split('/')[0]
+                )),
+                data_config['dataset'],
+                find_data(data_config.get('key'))
+            )
         else:
             raise Exception(f"Unknown config type {data_config['type']}")
 
@@ -185,6 +201,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
     )
 
     # Define needed files, execs and libs
+
     files = set()
     for data in itertools.chain((root,), mounts):
         files |= data.files
@@ -194,6 +211,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
         if line:
             src, *dest = line.split(':', maxsplit=1)
             files.add((src, dest[0] if dest else None))
+
     execs = set()
     for data in itertools.chain((root,), mounts):
         execs |= data.execs
@@ -203,6 +221,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
         if line:
             src, *dest = line.split(':', maxsplit=1)
             execs.add((src, dest[0] if dest else None))
+
     libs = set()
     for data in itertools.chain((root,), mounts):
         libs |= data.libs
@@ -212,6 +231,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
         if line:
             src, *dest = line.split(':', maxsplit=1)
             libs.add((src, dest[0] if dest else None))
+
     busybox = set()
     for data in itertools.chain((root,), mounts):
         busybox |= data.busybox
@@ -221,13 +241,20 @@ def read_config(config_file: Optional[str] = None) -> Config:
         if line:
             busybox.add(line.strip())
 
-    modules: Dict[str, List[str]] = {}
+    modules: DefaultDict[str, List[str]] = defaultdict(list)
+
+    def add_kmod_deps(kmods: Iterable[Tuple[str, Tuple[str, ...]]]) -> None:
+        for mod, param in kmods:
+            modules[mod].extend(param)
+
     for module in config['DEFAULT'].get('modules', '').split('\n'):
         if module:
             mod_name, *mod_args = module.split()
-            if modules.get(mod_name) is None:
-                modules[mod_name] = []
             modules[mod_name].extend(mod_args)
+    for data in itertools.chain((root,), mounts):
+        add_kmod_deps(data.kmods)
+        for ddep in data.iter_all_deps():
+            add_kmod_deps(ddep.kmods)
 
     # User scripts
     breakpoints = {

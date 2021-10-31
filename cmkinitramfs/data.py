@@ -45,6 +45,9 @@ class Data:
         (a list is defined
         in :data:`cmkinitramfs.initramfs.SHELL_SPECIAL_BUILTIN`
         and :data:`cmkinitramfs.initramfs.SHELL_RESERVED_WORDS`).
+    :param kmods: Kernel modules directly needed in the initramfs.
+        Each module is a tuple in the format ``(module, params)``,
+        where ``params`` is a tuple of module parameters (may be empty).
     :param _need: Loading and runtime dependencies
     :param _lneed: Loading only dependencies
     :param _needed_by: Reverse dependencies
@@ -55,6 +58,7 @@ class Data:
     execs: Set[Tuple[str, Optional[str]]]
     libs: Set[Tuple[str, Optional[str]]]
     busybox: Set[str]
+    kmods: Set[Tuple[str, Tuple[str, ...]]]
     _need: List[Data]
     _lneed: List[Data]
     _needed_by: List[Data]
@@ -82,6 +86,7 @@ class Data:
         self.execs = set()
         self.libs = set()
         self.busybox = set()
+        self.kmods = set()
         self._need = []
         self._lneed = []
         self._needed_by = []
@@ -543,8 +548,8 @@ class MountData(Data):
         to ``fsck``. This function checks the return code of the ``fsck``
         command and acts accordingly.
 
-        This functions calls ``fsck`` with all the arguments it was called
-        with. It checks the return code of ``fsck`` and :
+        This functions calls fsck with ``$@``.
+        It checks the return code of ``fsck`` and :
 
         - No error: returns 0.
         - Non fatal error: prints an error and returns 0.
@@ -568,12 +573,12 @@ class MountData(Data):
         out.writelines((
             'mount_fsck()\n',
             '{\n',
-            '\tFSTAB_FILE=/dev/null fsck "$@"\n',
+            '\tFSTAB_FILE=/dev/null "$@"\n',
             '\tfsck_ret=$?\n'
             '\t[ "${fsck_ret}" -eq 0 ] && return 0\n',
         ))
-        for err_code in fsck_err:
-            err_call, err_str = fsck_err[err_code]
+        for err_code, err_data in fsck_err.items():
+            err_call, err_str = err_data
             out.writelines((
                 f'\t[ "$((fsck_ret & {err_code}))" -eq {err_code} ] && ',
                 err_call, ' ', quote(f"fsck: {err_str}"), '\n',
@@ -586,6 +591,15 @@ class MountData(Data):
             '}\n',
             '\n',
         ))
+
+    @staticmethod
+    def mkdir(path: str, fatal: bool = False) -> Iterable[str]:
+        """Create a directory"""
+        return (
+            f'[ -d {quote(path)} ] || mkdir {quote(path)} || ',
+            'die ' if fatal else 'err ',
+            quote(f'Failed to create directory {quote(path)}'), '\n',
+        )
 
     @classmethod
     def initialize(cls, out: IO[str]) -> None:
@@ -616,6 +630,8 @@ class MountData(Data):
             self.execs.add(('fsck.exfat', None))
         elif self.filesystem in ('f2fs',):
             self.execs.add(('fsck.f2fs', None))
+        elif self.filesystem in ('zfs',):
+            self.execs.add(('fsck.zfs', None))
         self.add_dep(self.source)
 
     def __str__(self) -> str:
@@ -629,16 +645,14 @@ class MountData(Data):
             and self.options == other.options
 
     def load(self, out: IO[str]) -> None:
+        fsck_exec = f'fsck -t {quote(self.filesystem)}' \
+            if self.filesystem != 'zfs' else 'fsck.zfs'
         fsck = (
-            f'mount_fsck -t {quote(self.filesystem)} ',
-            f'{self.source.path()} || die ',
+            f'mount_fsck {fsck_exec} {self.source.path()} || die ',
             quote(f'Failed to check filesystem {self}'), '\n',
         ) if self.source.path() != 'none' else ()
-        mkdir = (
-            f"[ -d {quote(self.mountpoint)} ] || ",
-            f"mkdir {quote(self.mountpoint)} || err ",
-            quote(f'Failed to create directory {self}'), '\n',
-        ) if os.path.dirname(self.mountpoint) == '/mnt' else ()
+        mkdir = self.mkdir(self.mountpoint) \
+            if os.path.dirname(self.mountpoint) == '/mnt' else ()
 
         self._pre_load(out)
         out.writelines((
@@ -766,3 +780,118 @@ class CloneData(Data):
 
     def path(self) -> str:
         return self.dest.path()
+
+
+class ZFSPoolData(Data):
+    """ ZFS pool
+
+    :param pool: Pool name
+    :param cache: :class:`Data` containing a ZFS cache file,
+        it will be set as a load dependency
+    """
+    pool: str
+    cache: Optional[Data]
+
+    def __init__(self, pool: str, cache: Optional[Data]):
+        super().__init__()
+        self.pool = pool
+        self.cache = cache
+
+        if self.cache is not None:
+            self.add_load_dep(self.cache)
+        self.execs.add(('zpool', None))
+        self.kmods.add(('zfs', ()))
+
+    def __str__(self) -> str:
+        return f'ZFS pool {self.pool}'
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.pool == other.pool and self.cache == other.cache
+
+    def load(self, out: IO[str]) -> None:
+        self._pre_load(out)
+        cache = f'-c {self.cache.path()} ' if self.cache is not None else ''
+        out.writelines((
+            'info ', quote(f'Importing {self}'), '\n',
+            'zpool import -N ', cache, quote(self.pool), ' || die ',
+            quote(f'Failed to import {self}'), '\n',
+            '\n',
+        ))
+        self._post_load(out)
+
+    def unload(self, out: IO[str]) -> None:
+        self._pre_unload(out)
+        out.writelines((
+            'info ', quote(f'Importing {self}'), '\n',
+            'zpool export ', quote(self.pool), ' || die',
+            quote(f'Failed to export {self}'), '\n',
+            '\n',
+        ))
+        self._post_unload(out)
+
+    def path(self) -> str:
+        return quote(self.pool)
+
+
+class ZFSCryptData(Data):
+    """ZFS encrypted dataset
+
+    :param pool: :class:`ZFSPoolData` containing the encrypted dataset,
+        it will be set as a hard dependency
+    :param dataset: Dataset name
+    :param key: :class:`Data` to use as key file,
+        it will be set as a load dependency
+    """
+    pool: ZFSPoolData
+    dataset: str
+    key: Optional[Data]
+
+    def __init__(self, pool: Data, dataset: str,
+                 key: Optional[Data] = None):
+        super().__init__()
+        if not isinstance(pool, ZFSPoolData):
+            raise TypeError(f"{self.pool} is not a {ZFSPoolData}")
+        self.pool = pool
+        self.dataset = dataset
+        self.key = key
+
+        if self.pool.pool != dataset.split('/')[0]:
+            raise Exception(f"{self} is not on pool {self.pool}")
+        self.add_dep(self.pool)
+        if self.key is not None:
+            self.add_load_dep(self.key)
+
+        self.execs.add(('zfs', None))
+
+    def __str__(self) -> str:
+        return f'ZFS encrypted dataset {self.dataset}'
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.pool == other.pool and self.dataset == other.dataset \
+            and self.key == other.key
+
+    def load(self, out: IO[str]) -> None:
+        self._pre_load(out)
+        key = f'-L {self.key.path()} ' if self.key is not None else ''
+        out.writelines((
+            'info ', quote(f'Unlocking {self}'), '\n',
+            f'zfs load-key -r {key}{quote(self.dataset)} || die ',
+            quote(f'Failed to unlock {self}'), '\n',
+            '\n',
+        ))
+        self._post_load(out)
+
+    def unload(self, out: IO[str]) -> None:
+        self._pre_unload(out)
+        out.writelines((
+            'info ', quote(f'Locking {self}'), '\n',
+            f'zfs unload-key -r {quote(self.dataset)} || die ',
+            quote(f'Failed to lock {self}'), '\n',
+            '\n',
+        ))
+        self._post_unload(out)
+
+    def path(self) -> str:
+        return quote(self.dataset)

@@ -39,6 +39,12 @@ data
 .. autoclass:: CloneData
    :show-inheritance:
 
+.. autoclass:: ZFSPoolData
+   :show-inheritance:
+
+.. autoclass:: ZFSCryptData
+   :show-inheritance:
+
 .. autoexception:: DataError
    :show-inheritance:
 

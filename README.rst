@@ -279,7 +279,9 @@ Filesystem to mount.
  - ``filesystem`` (mandatory): Which filesystem to use, option passed
    to ``mount -t filesystem``.
 
- - ``options`` (optional): Mount options, defaults to ``ro``.
+ - ``options`` (optional): Mount options, defaults to ``ro``. Note for ZFS:
+   if the ``mountpoint`` property is not set to ``legacy``, the ``zfsutil``
+   option is required.
 
 MD data sections
 ----------------
@@ -313,6 +315,40 @@ Clone a source to a destination.
 
  - ``destination`` (mandatory): Data identifier of the destination
    of the clone.
+
+ZFS pool sections
+-----------------
+
+Import a ZFS pool.
+
+ - ``type = zfspool`` (mandatory).
+
+ - |need|
+
+ - |load-need|
+
+ - ``pool`` (mandatory): Pool name.
+
+ - ``cache`` (optional): Data identifier of the ZFS cache file (must be present
+   in the initramfs).
+
+ZFS crypt sections
+------------------
+
+Unlock an encrypted ZFS dataset.
+
+ - ``type = zfscrypt`` (mandatory).
+
+ - |need|
+
+ - |load-need|
+
+ - ``pool`` (optional): Data identifier of the parent pool (defaults to same
+   as pool name).
+
+ - ``dataset`` (mandatory): Name of the dataset to unlock.
+
+ - ``key`` (optional): Data identifier of a keyfile to use.
 
 .. |need| replace:: ``need`` (optional): Hard dependencies: comma separated
    list of data identifiers. Those dependencies are required to load
