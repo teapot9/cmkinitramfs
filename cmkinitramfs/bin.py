@@ -473,7 +473,14 @@ def _get_all_kmods(kernel: str) -> FrozenSet[str]:
     :param kernel: Target kernel version
     :return: Set with the absolute path of the modules
     """
-    return frozenset(glob.glob(normpath(f'{KMOD_DIR}/{kernel}/**/*.ko')))
+    with open(f'{KMOD_DIR}/{kernel}/modules.builtin', 'r') as builtin:
+        return frozenset(itertools.chain(
+            (
+                normpath(f'{KMOD_DIR}/{kernel}/{module.strip()}')
+                for module in builtin
+            ),
+            glob.glob(normpath(f'{KMOD_DIR}/{kernel}/**/*.ko'), recursive=True)
+        ))
 
 
 @functools.lru_cache()
@@ -488,10 +495,13 @@ def find_kmod_deps(path: str) -> FrozenSet[str]:
     cmd = ('modinfo', '-0', '-F', 'depends', path)
     logger.debug("Subprocess: %s", cmd)
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, check=True)
-    return frozenset(k for k in proc.stdout.decode('UTF-8').split('\0') if k)
+    return frozenset(
+        k.strip('\0') for k
+        in proc.stdout.decode('UTF-8').split(',') if k.strip('\0')
+    )
 
 
-def find_kmod(module: str, kernel: str) -> str:
+def find_kmod(module: str, kernel: str) -> Optional[str]:
     """Search a kernel module on the system
 
     :param module: Name of the kernel module
@@ -500,14 +510,21 @@ def find_kmod(module: str, kernel: str) -> str:
     :raises FileNotFoundError: Kernel module not found
     """
 
+    def none_if_builtin(module: str) -> Optional[str]:
+        module = normpath(module)
+        if module.startswith(f'{KMOD_DIR}/{kernel}/kernel/'):
+            logger.debug("Module %s: builtin", module)
+            return None
+        return module
+
     logger.debug("Searching module %s for kernel %s", module, kernel)
     if os.path.isabs(module):
         logger.debug("Module path is absolute: %s", module)
-        return module
+        return none_if_builtin(module)
     module_compat = module.replace('_', '-') + '.ko'
     for kmod in _get_all_kmods(kernel):
         if module_compat == os.path.basename(kmod).replace('_', '-'):
             kmod = normpath(kmod)
             logger.debug("Found module %s: %s", module, kmod)
-            return kmod
+            return none_if_builtin(kmod)
     raise FileNotFoundError(f"Kernel module not found: {module}")

@@ -364,11 +364,15 @@ def do_module(out: IO[str], module: str, *args: str) -> None:
     :param args: Arguments for the module (passed to ``modprobe``)
     """
     quoted_args = (f'{quote(arg)} ' for arg in args)
+    search = quote(f'/{module.replace("_", "-")}\\.ko')
 
     out.writelines((
-        f"info 'Loading kernel module {module}'\n",
-        f"modprobe {quote(module)} ", *quoted_args, '|| crit ',
+        'if cat "/lib/modules/$(uname -r)/modules.builtin" 2>/dev/null | '
+        f'tr _ - | grep -q {search}; then\n',
+        f"\tinfo 'Loading kernel module {module}'\n",
+        f"\tmodprobe {quote(module)} ", *quoted_args, '|| crit ',
         quote(f'Failed to load module {module}'), '\n',
+        'fi\n',
         '\n',
     ))
 

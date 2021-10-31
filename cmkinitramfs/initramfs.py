@@ -368,8 +368,14 @@ class Initramfs:
         :param mode: File permissions to use, defaults to same as ``module``
         """
 
+        if not self.kernels:
+            logger.error("%s: cannot add kernel module: no kernel selected",
+                         module)
+
         def _add_kmod(module: str, kernel: str) -> None:
             kmod = find_kmod(module, kernel)
+            if kmod is None:
+                return
             for dep in find_kmod_deps(kmod):
                 _add_kmod(dep, kernel)
             self.mkdir(os.path.dirname(kmod), parents=True)

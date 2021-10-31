@@ -387,6 +387,7 @@ class LuksData(Data):
         super().__init__()
         self.execs.add(('cryptsetup', None))
         self.libs.add(('libgcc_s.so.1', None))
+        self.kmods.add(('dm-crypt', ()))
         self.source = source
         self.name = name
         self.key = key
@@ -617,21 +618,28 @@ class MountData(Data):
         if self.filesystem in ('btrfs',):
             self.execs.add(('btrfs', None))
             self.execs.add(('fsck.btrfs', None))
+            self.kmods.add(('btrfs', ()))
         elif self.filesystem in ('ext4',):
             self.execs.add(('fsck.ext4', None))
             self.execs.add(('e2fsck', None))
+            self.kmods.add(('ext4', ()))
         elif self.filesystem in ('xfs',):
             self.execs.add(('fsck.xfs', None))
             self.execs.add(('xfs_repair', None))
+            self.kmods.add(('xfs', ()))
         elif self.filesystem in ('fat', 'vfat'):
             self.execs.add(('fsck.fat', None))
             self.execs.add(('fsck.vfat', None))
+            self.kmods.add(('vfat', ()))
         elif self.filesystem in ('exfat',):
             self.execs.add(('fsck.exfat', None))
+            self.kmods.add(('exfat', ()))
         elif self.filesystem in ('f2fs',):
             self.execs.add(('fsck.f2fs', None))
+            self.kmods.add(('f2fs', ()))
         elif self.filesystem in ('zfs',):
             self.execs.add(('fsck.zfs', None))
+            self.kmods.add(('zfs', ()))
         self.add_dep(self.source)
 
     def __str__(self) -> str:

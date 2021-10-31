@@ -528,7 +528,7 @@ def entry_cmkcpiolist() -> None:
             root=config.root,
             mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
-            modules=config.modules,
+            modules=(None if args.no_kmod else config.modules),
             scripts=config.scripts,
         )
 
@@ -631,7 +631,7 @@ def entry_cmkcpiodir() -> None:
             root=config.root,
             mounts=config.mounts,
             keymap=(None if config.keymap is None else config.keymap[2]),
-            modules=config.modules,
+            modules=(None if args.no_kmod else config.modules),
             scripts=config.scripts,
         )
 
