@@ -14,6 +14,7 @@ import logging
 import os
 import os.path
 import platform
+import stat
 import subprocess
 from typing import FrozenSet, Iterator, List, Optional, Tuple, Union
 
@@ -161,7 +162,7 @@ def _is_elf_compatible(elf1: ELFFile, elf2: ELFFile) -> bool:
 
     osabis = frozenset([e.header['e_ident']['EI_OSABI'] for e in (elf1, elf2)])
     compat_sets = (frozenset(
-        'ELFOSABI_%s' % x for x in ('NONE', 'SYSV', 'GNU', 'LINUX',)
+        f'ELFOSABI_{x}' for x in ('NONE', 'SYSV', 'GNU', 'LINUX',)
     ),)
     return (
         (len(osabis) == 1 or any(osabis.issubset(x) for x in compat_sets))
@@ -449,7 +450,8 @@ def find_exec(executable: str, compat: Optional[str] = None, root: str = '/') \
             found_path = normpath(found_dir + '/' + execname)
 
             # Check for compatibility
-            if not os.access(found_path, mode=os.X_OK):
+            if not os.path.isfile(found_path) \
+                    or os.stat(found_path).st_mode & stat.S_IXOTH == 0:
                 continue
             try:
                 _get_elf_arch(compat_elf, found_path)
