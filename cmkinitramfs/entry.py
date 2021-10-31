@@ -79,6 +79,7 @@ class Config:
     cmkcpiodir_opts: str
     cmkcpiolist_opts: str
     modules: Mapping[str, Iterable[str]]
+    has_modules_manual: bool
     scripts: Mapping[Breakpoint, Iterable[str]]
 
 
@@ -247,10 +248,12 @@ def read_config(config_file: Optional[str] = None) -> Config:
         for mod, param in kmods:
             modules[mod].extend(param)
 
+    has_modules_manual = False
     for module in config['DEFAULT'].get('modules', '').split('\n'):
         if module:
             mod_name, *mod_args = module.split()
             modules[mod_name].extend(mod_args)
+            has_modules_manual = True
     for data in itertools.chain((root,), mounts):
         add_kmod_deps(data.kmods)
         for ddep in data.iter_all_deps():
@@ -291,6 +294,7 @@ def read_config(config_file: Optional[str] = None) -> Config:
             'cmkcpiolist-default-opts', ''
         ),
         modules=modules,
+        has_modules_manual=has_modules_manual,
         scripts=scripts,
     )
 
@@ -512,6 +516,9 @@ def entry_cmkcpiolist() -> None:
     # Parse arguments
     if args.debug or args.only_build_list:
         args.keep = True
+    if args.no_kmod and config.has_modules_manual:
+        logger.warning("Kernel modules disabled but configuration "
+                       "has manually configured modules")
 
     # Keymap
     if config.keymap is not None and config.keymap[0] is not None:
@@ -615,6 +622,9 @@ def entry_cmkcpiodir() -> None:
     # Parse arguments
     if args.debug or args.only_build_directory:
         args.keep = True
+    if args.no_kmod and config.has_modules_manual:
+        logger.warning("Kernel modules disabled but configuration "
+                       "has manually configured modules")
 
     # Keymap
     if config.keymap is not None and config.keymap[0] is not None:
