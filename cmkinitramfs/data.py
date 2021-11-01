@@ -885,7 +885,7 @@ class ZFSCryptData(Data):
         key = f'-L {self.key.path()} ' if self.key is not None else ''
         out.writelines((
             'info ', quote(f'Unlocking {self}'), '\n',
-            f'zfs load-key -r {key}{quote(self.dataset)} || die ',
+            f'zfs load-key -r {key}{quote(self.dataset)} 1>&2 || die ',
             quote(f'Failed to unlock {self}'), '\n',
             '\n',
         ))
