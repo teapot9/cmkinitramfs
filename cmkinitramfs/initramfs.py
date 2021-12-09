@@ -162,6 +162,9 @@ class Initramfs:
             elif os.path.isdir(libdir):
                 self.add_item(Directory(0o755, self.user, self.group, libdir))
 
+        # Create symlink /usr -> /
+        self.add_item(Symlink(0o755, self.user, self.group, '/usr', '.'))
+
         # Create necessary character devices
         self.add_item(Node(0o600, self.user, self.group, '/dev/console',
                            Node.NodeType.CHARACTER, 5, 1))
