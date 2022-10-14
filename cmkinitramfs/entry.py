@@ -178,6 +178,25 @@ def read_config(config_file: Optional[str] = None) -> Config:
                 data_config['dataset'],
                 find_data(data_config.get('key'))
             )
+        elif data_config['type'] == 'network':
+            data_dic[data_id] = datamod.Network(
+                data_config['device'],
+                data_config.get('ip'),
+                data_config.get('mask'),
+                data_config.get('gateway'),
+            )
+        elif data_config['type'] == 'iscsi':
+            data_dic[data_id] = datamod.ISCSI(
+                data_config['initiator'],
+                data_config['target'],
+                int(data_config['portal-group']),
+                data_config['address'],
+                int(data_config.get('port', '3260')),
+                data_config.get('username'),
+                data_config.get('password'),
+                data_config.get('username-in'),
+                data_config.get('password-in'),
+            )
         else:
             raise Exception(f"Unknown config type {data_config['type']}")
 

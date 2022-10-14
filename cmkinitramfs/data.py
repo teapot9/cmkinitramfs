@@ -903,3 +903,225 @@ class ZFSCryptData(Data):
 
     def path(self) -> str:
         return quote(self.dataset)
+
+
+class Network(Data):
+    """Networking configuration
+
+    :param device: MAC address of the device
+    :param ip: IP address (None for DHCP)
+    :param mask: IP mask (defaults to classful or DHCP)
+    :param gateway: default route IP (optional)
+    """
+    device: str
+    ip: Optional[str]
+    mask: Optional[str]
+    gateway: Optional[str]
+
+    @staticmethod
+    def classful_mask(ip: str) -> str:
+        first = int(ip.split('.')[0])
+        if first < 128:
+            return '255.0.0.0'
+        elif first < 192:
+            return '255.255.0.0'
+        elif first < 224:
+            return '255.255.255.0'
+        else:
+            raise ValueError(f"No classful network mask for {ip}")
+
+    @staticmethod
+    def __fun_find_iface(out: IO[str]) -> None:
+        """"Define the ``find_iface`` function
+
+        This function takes one MAC address and outputs the corresponding
+        network interface name (e.g. ``eth0``).
+
+        Return value: 0 on success, 1 on failure.
+        """
+
+        out.writelines((
+            'find_iface()\n',
+            '{\n',
+            '\tfor k in /sys/class/net/*; do\n',
+            '\t\tif ! grep -q "${1}" "${k}/address" 1>/dev/null 2>&1; ',
+            'then continue; fi\n',
+            '\t\techo "$(basename -- "${k}")"\n',
+            '\t\treturn 0\n',
+            '\tdone\n',
+            '\treturn 1\n'
+            '}\n',
+        ))
+
+    def __init__(
+        self, device: str, ip: Optional[str] = None,
+        mask: Optional[str] = None, gateway: Optional[str] = None
+    ):
+        super().__init__()
+
+        self.device = device
+        if mask is None and ip is not None:
+            mask = Network.classful_mask(ip)
+        self.ip = ip
+        self.mask = mask
+        self.gateway = gateway
+
+        self.busybox |= {'ip', 'udhcpc'}
+
+    def __str__(self) -> str:
+        return f'network interface {self.device}'
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.ip == other.ip and self.mask == other.mask \
+            and self.gateway == other.gateway and self.device == other.device
+
+    def load(self, out: IO[str]) -> None:
+        device = quote(self.device)
+        ip = quote(self.ip)
+        mask = quote(self.mask)
+        gateway = quote(self.gateway)
+        iface = '"${iface}"'
+        iface_full = quote(f'{self.device} (') + iface + quote(')')
+
+        static_ip = (
+            f'ip link set {iface} up || die ',
+            quote(f'Failed to raise network interface '), iface_full, '\n',
+            f'ip addr add {ip}/{mask} dev {iface} || die ',
+            quote(f'Failed to add {self.ip} to '), iface_full, '\n',
+        )
+        dhcp_ip = (
+            f'udhcpc -nqfSi {iface} || die ',
+            quote(f'DHCP failed on '), iface_full, '\n',
+        )
+        gw_route = (
+            f'ip route add default via {gateway} dev {iface} || die ',
+            quote(f'Failed to set gateway {self.gateway} on '),
+            iface_full, '\n',
+        )
+
+        self._pre_load(out)
+        out.writelines((
+            'info ', quote(f'Raising {self}'), '\n',
+            f'iface="$(find_iface {device})" || die ',
+            quote(f'Failed to find network interface {self.device}'), '\n',
+            *(static_ip if self.ip is not None else dhcp_ip),
+            *(gw_route if self.gateway is not None else ()),
+            '\n',
+        ))
+        self._post_load(out)
+
+    def unload(self, out: IO[str]) -> None:
+        device = quote(self.device)
+        iface = '"${iface}"'
+        iface_full = quote(f'{self.device} (') + iface + quote(')')
+
+        self._pre_unload(out)
+        out.writelines((
+            'info ', quote(f'Shutting down {self}'), '\n',
+            f'iface="$(find_iface {device})" || die ',
+            quote(f'Failed to find network interface {self.device}'), '\n',
+            f'ip link set {iface} down || die ',
+            quote(f'Failed to shutdown network interface '), iface_full, '\n',
+            '\n',
+        ))
+        self._post_unload(out)
+
+class ISCSI(Data):
+    """iSCSI target
+
+    :param initiator: Initiator name
+    :param target: iSCSI target
+    :param portal_group: Target portal group tag
+    :param address: iSCSI server address
+    :param port: iSCSI server port
+    :param username: Authentication username
+    :param password: Authentication password
+    :param username_in: Incoming authentication username
+    :param password_in: Incoming authentication password
+    """
+    initiator: str
+    target: str
+    portal_group: int
+    address: str
+    port: int
+    username: Optional[str]
+    password: Optional[str]
+    username_in: Optional[str]
+    password_in: Optional[str]
+
+    def __init__(
+        self,
+        initiator: str,
+        target: str,
+        portal_group: int,
+        address: str,
+        port: int = 3260,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        username_in: Optional[str] = None,
+        password_in: Optional[str] = None,
+    ):
+        super().__init__()
+
+        self.initiator = initiator
+        self.target = target
+        self.portal_group = portal_group
+        self.address = address
+        self.port = port
+        self.username = username
+        self.password = password
+        self.username_in = username_in
+        self.password_in = password_in
+
+        if (self.username is None) != (self.password is None):
+            raise ValueError("Both username and password must be set")
+        if (self.username_in is None) != (self.password_in is None):
+            raise ValueError("Both username_in and password_in must be set")
+
+        self.execs |= {('iscsistart', None)}
+
+    def __str__(self) -> str:
+        return f'iSCSI target {self.target}'
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and super().__eq__(other) \
+            and self.initiator == other.initiator \
+            and self.target == other.target \
+            and self.portal_group == other.portal_group \
+            and self.address == other.address \
+            and self.port == other.port \
+            and self.username == other.username \
+            and self.password == other.password \
+            and self.username_in == other.username_in \
+            and self.password_in == other.password_in
+
+    def load(self, out: IO[str]) -> None:
+        auth = (
+            ' -u ', quote(self.username),
+            ' -w ', quote(self.password),
+        )
+        auth_in = (
+            ' -U ', quote(self.username_in),
+            ' -W ', quote(self.password_in),
+        )
+
+        self._pre_load(out)
+        out.writelines((
+            'info ', quote(f'Loading {self}'), '\n',
+            'iscsistart',
+            ' -i ', quote(self.initiator),
+            ' -t ', quote(self.target),
+            ' -g ', str(self.portal_group),
+            ' -a ', quote(self.address),
+            ' -p ', str(self.port),
+            *(auth if self.username is not None else ()),
+            *(auth_in if self.username_in is not None else ()),
+            ' || die ', quote(f'Failed to load {self}'), '\n',
+            '\n',
+        ))
+        self._post_load(out)
+
+    def unload(self, out: IO[str]) -> None:
+        self._pre_unload(out)
+        self._post_unload(out)
