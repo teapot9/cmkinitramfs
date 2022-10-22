@@ -978,21 +978,21 @@ class Network(Data):
 
     def load(self, out: IO[str]) -> None:
         device = quote(self.device)
-        ip = quote(self.ip)
-        mask = quote(self.mask)
-        gateway = quote(self.gateway)
+        ip = quote(self.ip if self.ip is not None else '')
+        mask = quote(self.mask if self.mask is not None else '')
+        gateway = quote(self.gateway if self.gateway is not None else '')
         iface = '"${iface}"'
         iface_full = quote(f'{self.device} (') + iface + quote(')')
 
         static_ip = (
             f'ip link set {iface} up || die ',
-            quote(f'Failed to raise network interface '), iface_full, '\n',
+            quote('Failed to raise network interface '), iface_full, '\n',
             f'ip addr add {ip}/{mask} dev {iface} || die ',
             quote(f'Failed to add {self.ip} to '), iface_full, '\n',
         )
         dhcp_ip = (
             f'udhcpc -nqfSi {iface} || die ',
-            quote(f'DHCP failed on '), iface_full, '\n',
+            quote('DHCP failed on '), iface_full, '\n',
         )
         gw_route = (
             f'ip route add default via {gateway} dev {iface} || die ',
@@ -1022,10 +1022,11 @@ class Network(Data):
             f'iface="$(find_iface {device})" || die ',
             quote(f'Failed to find network interface {self.device}'), '\n',
             f'ip link set {iface} down || die ',
-            quote(f'Failed to shutdown network interface '), iface_full, '\n',
+            quote('Failed to shutdown network interface '), iface_full, '\n',
             '\n',
         ))
         self._post_unload(out)
+
 
 class ISCSI(Data):
     """iSCSI target
@@ -1098,12 +1099,20 @@ class ISCSI(Data):
 
     def load(self, out: IO[str]) -> None:
         auth = (
-            ' -u ', quote(self.username),
-            ' -w ', quote(self.password),
+            ' -u ', quote(
+                self.username if self.username is not None else ''
+            ),
+            ' -w ', quote(
+                self.password if self.password is not None else ''
+            ),
         )
         auth_in = (
-            ' -U ', quote(self.username_in),
-            ' -W ', quote(self.password_in),
+            ' -U ', quote(
+                self.username_in if self.username_in is not None else ''
+            ),
+            ' -W ', quote(
+                self.password_in if self.password_in is not None else ''
+            ),
         )
 
         self._pre_load(out)
