@@ -953,11 +953,6 @@ class Network(Data):
             '}\n',
         ))
 
-    @classmethod
-    def initialize(cls, out: IO[str]) -> None:
-        super().initialize(out)
-        Network.__fun_find_iface(out)
-
     def __init__(
         self, device: str, ip: Optional[str] = None,
         mask: Optional[str] = None, gateway: Optional[str] = None
@@ -990,6 +985,8 @@ class Network(Data):
         iface_full = quote(f'{self.device} (') + iface + quote(')')
 
         static_ip = (
+            f'ip link set {iface} up || die ',
+            quote('Failed to raise network interface '), iface_full, '\n',
             f'ip addr add {ip}/{mask} dev {iface} || die ',
             quote(f'Failed to add {self.ip} to '), iface_full, '\n',
         )
@@ -1008,8 +1005,6 @@ class Network(Data):
             'info ', quote(f'Raising {self}'), '\n',
             f'iface="$(find_iface {device})" || die ',
             quote(f'Failed to find network interface {self.device}'), '\n',
-            f'ip link set {iface} up || die ',
-            quote('Failed to raise network interface '), iface_full, '\n',
             *(static_ip if self.ip is not None else dhcp_ip),
             *(gw_route if self.gateway is not None else ()),
             '\n',
