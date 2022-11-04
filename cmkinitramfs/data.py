@@ -951,6 +951,7 @@ class Network(Data):
             '\tdone\n',
             '\treturn 1\n'
             '}\n',
+            '\n',
         ))
 
     @classmethod
@@ -972,6 +973,9 @@ class Network(Data):
         self.gateway = gateway
 
         self.busybox |= {'ip', 'udhcpc'}
+        self.files |= {
+            ('/usr/share/udhcpc/default.script', '/etc/udhcpc.script'),
+        }
 
     def __str__(self) -> str:
         return f'network interface {self.device}'
@@ -994,7 +998,7 @@ class Network(Data):
             quote(f'Failed to add {self.ip} to '), iface_full, '\n',
         )
         dhcp_ip = (
-            f'udhcpc -nqfSi {iface} || die ',
+            f'udhcpc -nqfS -s /etc/udhcpc.script -i {iface} || die ',
             quote('DHCP failed on '), iface_full, '\n',
         )
         gw_route = (
