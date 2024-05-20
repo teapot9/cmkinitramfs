@@ -350,6 +350,54 @@ Unlock an encrypted ZFS dataset.
 
  - ``key`` (optional): Data identifier of a keyfile to use.
 
+Network sections
+----------------
+
+Configure a network interface.
+
+ - ``type = network`` (mandatory).
+
+ - |need|
+
+ - |load-need|
+
+ - ``device`` (mandatory): MAC address of the interface.
+
+ - ``ip`` (optional): IP address of the interface (DHCP if not set).
+
+ - ``mask`` (optional): IP mask (if static IP is defined).
+
+ - ``gateway`` (optional): default route IP (if static IP is defined).
+
+ISCSI sections
+--------------
+
+Configure an iSCSI device.
+
+ - ``type = iscsi``
+
+ - |need|
+
+ - |load-need|
+
+ - ``initiator`` (mandatory): Initiator name.
+
+ - ``target`` (mandatory): iSCSI target.
+
+ - ``portal_group`` (mandatory): target portal group tag.
+
+ - ``address`` (mandatory): iSCSI server address.
+
+ - ``port`` (mandatory): iSCSI server port.
+
+ - ``username`` (optional): authentification username.
+
+ - ``password`` (optional): authentification password.
+
+ - ``username_in`` (optional): incoming authentification username.
+
+ - ``password_in`` (optional): incoming authentification password.
+
 .. |need| replace:: ``need`` (optional): Hard dependencies: comma separated
    list of data identifiers. Those dependencies are required to load
    *and* use the data.
@@ -387,10 +435,10 @@ cmkinit
 
    $ cmkinit --help
    usage: cmkinit [-h] [--version]
-
+   
    Build an init script
-
-   optional arguments:
+   
+   options:
      -h, --help  show this help message and exit
      --version   show program's version number and exit
 
@@ -405,27 +453,28 @@ cmkcpiodir
 .. code-block:: console
 
    $ cmkcpiodir --help
-   usage: cmkcpiodir [-h] [--version] [--debug] [--verbose] [--quiet]
+   usage: cmkcpiodir [-h] [--verbose] [--quiet] [--version] [--debug]
                      [--output OUTPUT] [--binroot BINROOT] [--kernel KERNEL]
-                     [--only-build-archive | --only-build-directory] [--keep]
-                     [--clean] [--build-dir BUILD_DIR]
-
+                     [--no-kmod] [--only-build-archive | --only-build-directory]
+                     [--keep] [--clean] [--build-dir BUILD_DIR]
+   
    Build an initramfs using a directory.
-
-   optional arguments:
+   
+   options:
      -h, --help            show this help message and exit
-     --version             show program's version number and exit
-     --debug, -d           debugging mode: non-root, implies -k
      --verbose, -v         be verbose
      --quiet, -q           be quiet (can be repeated)
+     --version             show program's version number and exit
+     --debug, -d           debugging mode: non-root, implies -k
      --output OUTPUT, -o OUTPUT
                            set the output of the CPIO archive
      --binroot BINROOT, -r BINROOT
                            set the root directory for binaries (executables and
                            libraries)
      --kernel KERNEL, -K KERNEL
-                           set the target kernel version of the initramfs,
+                           set the target kernel versions of the initramfs,
                            defaults to the running kernel
+     --no-kmod             disable kernel modules support
      --only-build-archive, -c
                            only build the CPIO archive from an existing initramfs
                            directory
@@ -449,27 +498,28 @@ cmkcpiolist
 .. code-block:: console
 
    $ cmkcpiolist --help
-   usage: cmkcpiolist [-h] [--version] [--debug] [--verbose] [--quiet]
+   usage: cmkcpiolist [-h] [--verbose] [--quiet] [--version] [--debug]
                       [--output OUTPUT] [--binroot BINROOT] [--kernel KERNEL]
-                      [--only-build-archive | --only-build-list] [--keep]
-                      [--cpio-list CPIO_LIST]
-
+                      [--no-kmod] [--only-build-archive | --only-build-list]
+                      [--keep] [--cpio-list CPIO_LIST]
+   
    Build an initramfs using a CPIO list
-
-   optional arguments:
+   
+   options:
      -h, --help            show this help message and exit
-     --version             show program's version number and exit
-     --debug, -d           debugging mode: non-root, implies -k
      --verbose, -v         be verbose
      --quiet, -q           be quiet (can be repeated)
+     --version             show program's version number and exit
+     --debug, -d           debugging mode: non-root, implies -k
      --output OUTPUT, -o OUTPUT
                            set the output of the CPIO archive
      --binroot BINROOT, -r BINROOT
                            set the root directory for binaries (executables and
                            libraries)
      --kernel KERNEL, -K KERNEL
-                           set the target kernel version of the initramfs,
+                           set the target kernel versions of the initramfs,
                            defaults to the running kernel
+     --no-kmod             disable kernel modules support
      --only-build-archive, -c
                            only build the CPIO archive from an existing CPIO list
      --only-build-list, -L
@@ -491,13 +541,13 @@ findlib
    usage: findlib [-h] [--verbose] [--quiet] [--version]
                   [--compatible COMPATIBLE] [--root ROOT] [--null] [--glob]
                   LIB [LIB ...]
-
+   
    Find a library on the system
-
+   
    positional arguments:
      LIB                   library to search
-
-   optional arguments:
+   
+   options:
      -h, --help            show this help message and exit
      --verbose, -v         be verbose
      --quiet, -q           be quiet (can be repeated)
