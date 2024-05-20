@@ -5,7 +5,7 @@ __copyright__ = 'Copyright (c) 2020 Louis Leseur'
 __email__ = 'louis.leseur@gmail.com'
 __license__ = 'MIT'
 __url__ = 'https://github.com/teapot9/cmkinitramfs'
-__version__ = '0.2.2'
+__version__ = '0.2.4'
 
 import logging
 
